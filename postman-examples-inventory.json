@@ -1,0 +1,72 @@
+{
+  "examples": [
+    {
+      "name": "Example 1: Complete Product with All Fields",
+      "description": "Full product information including social media sale code, barcode, and all optional fields",
+      "requestBody": {
+        "productName": "Coca Cola 500ml Bottle",
+        "productCode": "COKE500ML", 
+        "saleCode": "FB-COKE500", 
+        "SKU": "COKE-500-ML-BTL", 
+        "barcode": "1234567890123", 
+        "category": "Beverages", 
+        "subCategory": "Soft Drinks", 
+        "brand": "Coca Cola", 
+        "description": "Refreshing carbonated soft drink in 500ml plastic bottle. Perfect for any occasion.", 
+        "buyingPrice": 50, 
+        "sellingPrice": 75, 
+        "unitOfMeasure": "piece", 
+        "reorderPoint": 100, 
+        "reorderQuantity": 500, 
+        "taxRate": 5, 
+        "status": "active", 
+        "tags": ["beverage", "soft-drink", "carbonated", "popular"] 
+      }
+    },
+    {
+      "name": "Example 2: Minimal Required Fields Only",
+      "description": "Product with only required fields - simplest example",
+      "requestBody": {
+        "productName": "Rice 5kg Bag",
+        "productCode": "RICE5KG",
+        "SKU": "RICE-5KG-BAG",
+        "category": "Food",
+        "buyingPrice": 5000,
+        "sellingPrice": 6500,
+        "unitOfMeasure": "piece"
+      }
+    },
+    {
+      "name": "Example 3: Product with Social Media Sale Code",
+      "description": "Product configured for social media sales with sale code and additional details",
+      "requestBody": {
+        "productName": "Samsung Galaxy S23 Ultra",
+        "productCode": "SAMS23ULTRA",
+        "saleCode": "IG-SAMS23-ULTRA",
+        "SKU": "SAMSUNG-S23-ULTRA-256GB",
+        "barcode": "8806094567890",
+        "category": "Electronics",
+        "subCategory": "Smartphones",
+        "brand": "Samsung",
+        "description": "Premium flagship smartphone with 256GB storage, 12GB RAM, 200MP camera, and 5G connectivity.",
+        "buyingPrice": 1200000,
+        "sellingPrice": 1500000,
+        "unitOfMeasure": "piece",
+        "reorderPoint": 5,
+        "reorderQuantity": 20,
+        "taxRate": 0,
+        "status": "active",
+        "tags": ["smartphone", "android", "5g", "premium", "samsung"]
+      }
+    }
+  ],
+  "instructions": {
+    "method": "POST",
+    "url": "http://localhost:YOUR_PORT/api/v1/inventory",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "note": "Copy any of the requestBody objects above and paste into Postman body (raw JSON). Note: Remove inline comments (//) before using in Postman if they cause issues, as standard JSON doesn't support comments."
+  }
+}
+

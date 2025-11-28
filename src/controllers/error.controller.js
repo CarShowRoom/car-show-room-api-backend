@@ -57,26 +57,6 @@ export const globalErrorHandler = (error, req, res, next) => {
   error.statusCode = error.statusCode || 500;
   error.success = error.success || false;
 
-  // --- LOGGING SECTION (BEFORE TRANSFORMATION IN PRODUCTION) ---
-  // This ensures you log the *original* technical error,
-  // especially if it's a programming error or a Mongoose error,
-  // before it's converted into a user-friendly CustomError.
-  if (error.isOperational) {
-    // For operational errors, warn is often appropriate.
-    // The message is already user-friendly for these.
-    logger.warn(
-      `Operational Error: ${error.statusCode} - ${error.message} | URL: ${req.originalUrl} | Method: ${req.method} | IP: ${req.ip}`,
-      { originalError: error } // Include original error object for more context if logger needs it
-    );
-  } else {
-    // For programming errors (non-operational) or transformed technical errors, use error level.
-    logger.error(
-      `Programming Error: ${error.statusCode} - ${error.message} | Stack: ${error.stack} | URL: ${req.originalUrl} | Method: ${req.method} | IP: ${req.ip}`,
-      { originalError: error } // Include original error object to get all internal details
-    );
-  }
-  // --- END LOGGING SECTION ---
-
   if (process.env.NODE_ENV === "development") {
     // In development, we want all the juicy details
     devErrors(res, error);

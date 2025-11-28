@@ -10,6 +10,8 @@ import configureCors from "./configs/cors.config.js";
 import globalErrorHandler from "./controllers/error.controller.js";
 import CustomError from "./utils/customError.js";
 
+import inventoryRouter from "./routes/inventory.route.js";
+
 const app = express();
 app.use(
   helmet({
@@ -28,6 +30,7 @@ app.use(express.json({ limit: "10kb" }));
 app.use(mmTimeZoneMiddleware);
 
 //Route Mounting
+app.use("/api/v1", inventoryRouter);
 
 //404-Error Handler
 app.all("/*any", (req, res, next) => {
