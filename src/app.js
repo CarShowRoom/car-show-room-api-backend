@@ -11,6 +11,10 @@ import globalErrorHandler from "./controllers/error.controller.js";
 import CustomError from "./utils/customError.js";
 
 import inventoryRouter from "./routes/inventory.route.js";
+import warehouseProfileRouter from "./routes/warehouseProfile.route.js";
+import supplierProfileRouter from "./routes/supplierProfile.route.js";
+import purchasingRouter from "./routes/purchasing.route.js";
+import warehouseRouter from "./routes/warehouse.route.js";
 
 const app = express();
 app.use(
@@ -31,7 +35,10 @@ app.use(mmTimeZoneMiddleware);
 
 //Route Mounting
 app.use("/api/v1", inventoryRouter);
-
+app.use("/api/v1", warehouseProfileRouter);
+app.use("/api/v1", supplierProfileRouter);
+app.use("/api/v1", purchasingRouter);
+app.use("/api/v1", warehouseRouter);
 //404-Error Handler
 app.all("/*any", (req, res, next) => {
   const err = new CustomError(

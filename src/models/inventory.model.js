@@ -145,10 +145,8 @@ const inventorySchema = new mongoose.Schema(
 );
 
 // Indexes for better query performance
-inventorySchema.index({ productCode: 1 });
-inventorySchema.index({ SKU: 1 });
-inventorySchema.index({ saleCode: 1 }); // Index for saleCode queries
-inventorySchema.index({ barcode: 1 });
+// Note: productCode, SKU, saleCode, and barcode already have indexes from unique: true
+// Only add indexes for fields that don't have unique: true
 inventorySchema.index({ category: 1, subCategory: 1 });
 inventorySchema.index({ status: 1 });
 inventorySchema.index({ productName: "text", description: "text" }); // Text search index
