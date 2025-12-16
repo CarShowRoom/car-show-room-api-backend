@@ -15,6 +15,7 @@ import warehouseProfileRouter from "./routes/warehouseProfile.route.js";
 import supplierProfileRouter from "./routes/supplierProfile.route.js";
 import purchasingRouter from "./routes/purchasing.route.js";
 import warehouseRouter from "./routes/warehouse.route.js";
+import grnRouter from "./routes/grn.route.js";
 
 const app = express();
 app.use(
@@ -39,6 +40,7 @@ app.use("/api/v1", warehouseProfileRouter);
 app.use("/api/v1", supplierProfileRouter);
 app.use("/api/v1", purchasingRouter);
 app.use("/api/v1", warehouseRouter);
+app.use("/api/v1", grnRouter);
 //404-Error Handler
 app.all("/*any", (req, res, next) => {
   const err = new CustomError(

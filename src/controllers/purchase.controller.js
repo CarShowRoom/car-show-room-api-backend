@@ -13,21 +13,28 @@ export const createPurchase = asyncErrorHandler(async (req, res, next) => {
   // Fetch product details for each product in the purchase
   const productsWithDetails = await Promise.all(
     products.map(async (item) => {
+      if (!item.inventoryId || !item.purchaseQuantity) {
+        throw new CustomError(
+          400,
+          `Product must have inventoryId and purchaseQuantity`
+        );
+      }
+
       const inventoryItem = await Inventory.findById(item.inventoryId);
 
       if (!inventoryItem) {
         throw new CustomError(
           404,
-          `Product with ID ${inventoryItem.inventoryId} not found`
+          `Product with ID ${item.inventoryId} not found`
         );
       }
 
       return {
-        inventoryId: inventoryItem.inventoryId,
+        inventoryId: inventoryItem._id,
         productName: inventoryItem.productName,
         productCode: inventoryItem.productCode,
         buyingPrice: inventoryItem.buyingPrice,
-        purchaseQuantity: inventoryItem.purchaseQuantity,
+        purchaseQuantity: item.purchaseQuantity,
       };
     })
   );
@@ -72,3 +79,40 @@ export const getPurchaseById = asyncErrorHandler(async (req, res, next) => {
     data: purchase,
   });
 });
+
+export const updatePurchaseStatus = asyncErrorHandler(
+  async (req, res, next) => {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return next(new CustomError(400, "Status is required"));
+    }
+
+    const validStatuses = ["pending", "confirmed", "arrived", "cancelled"];
+    if (!validStatuses.includes(status)) {
+      return next(
+        new CustomError(
+          400,
+          `Invalid status. Allowed values: ${validStatuses.join(", ")}`
+        )
+      );
+    }
+
+    const purchase = await Purchasing.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true, runValidators: true }
+    );
+
+    if (!purchase) {
+      return next(new CustomError(404, "Purchase not found"));
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Purchase status updated successfully",
+      data: purchase,
+    });
+  }
+);
