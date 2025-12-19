@@ -83,7 +83,15 @@ const warehouseProfileSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    toJSON: { virtuals: true },
+    toJSON: {
+      virtuals: true,
+      transform: function (doc, ret) {
+        // Remove _id and __v from JSON output, keep id virtual
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      },
+    },
     toObject: { virtuals: true },
   }
 );

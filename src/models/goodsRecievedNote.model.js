@@ -26,6 +26,14 @@ const grnLineItemSchema = new mongoose.Schema(
       min: [0, "Bad quantity cannot be negative"],
       default: 0,
     },
+    transferredQuantity: {
+      type: Number,
+      required: [true, "Transferred quantity is required"],
+      min: [0, "Transferred quantity cannot be negative"],
+      default: 0,
+      // Tracks how much good quantity has been transferred to warehouses
+      // availableQuantity = goodQuantity - transferredQuantity
+    },
     unitPrice: {
       type: Number,
       required: [true, "Unit price is required"],
@@ -55,12 +63,17 @@ const grnLineItemSchema = new mongoose.Schema(
 grnLineItemSchema.virtual("profitMargin").get(function () {
   // unitPrice is the buying price (cost)
   // sellingPrice comes from populated inventoryId
-  if (!this.unitPrice || this.unitPrice === 0) return null;
-
-  // Check if inventoryId is populated and has sellingPrice
   const sellingPrice = this.inventoryId?.sellingPrice;
-  if (!sellingPrice || sellingPrice === 0) return null;
 
+  // Both values must exist and be numbers to calculate profit margin
+  if (sellingPrice == null || this.unitPrice == null) return null;
+  if (typeof sellingPrice !== "number" || typeof this.unitPrice !== "number")
+    return null;
+
+  // Cannot calculate margin if unitPrice (cost) is 0 (division by zero)
+  if (this.unitPrice === 0) return null;
+
+  // Calculate profit margin: ((Selling Price - Cost Price) / Cost Price) * 100
   return ((sellingPrice - this.unitPrice) / this.unitPrice) * 100;
 });
 
@@ -68,9 +81,22 @@ grnLineItemSchema.virtual("profitAmount").get(function () {
   // unitPrice is the buying price (cost)
   // sellingPrice comes from populated inventoryId
   const sellingPrice = this.inventoryId?.sellingPrice;
-  if (!sellingPrice) return null;
 
+  // Both values must exist and be numbers to calculate profit amount
+  if (sellingPrice == null || this.unitPrice == null) return null;
+  if (typeof sellingPrice !== "number" || typeof this.unitPrice !== "number")
+    return null;
+
+  // Calculate profit amount: Selling Price - Cost Price
+  // Can be negative (loss) or positive (profit)
   return sellingPrice - this.unitPrice;
+});
+
+// Virtual for available quantity (goodQuantity - transferredQuantity)
+grnLineItemSchema.virtual("availableQuantity").get(function () {
+  const goodQty = this.goodQuantity || 0;
+  const transferredQty = this.transferredQuantity || 0;
+  return Math.max(0, goodQty - transferredQty);
 });
 
 // Main GRN Schema
@@ -97,8 +123,8 @@ const goodsRecievedNoteSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: {
-        values: ["pending", "received", "completed", "rejected"],
-        message: "Status must be pending, received, completed, or rejected",
+        values: ["pending", "partial", "verified", "rejected"],
+        message: "Status must be pending, partial, verified, or rejected",
       },
       default: "pending",
     },
@@ -153,8 +179,7 @@ const goodsRecievedNoteSchema = new mongoose.Schema(
 // Pre-save hooks can have issues with create() method
 
 // Indexes for better query performance
-goodsRecievedNoteSchema.index({ grnNumber: 1 });
-goodsRecievedNoteSchema.index({ purchasingId: 1 });
+// Note: grnNumber and purchasingId already have indexes from unique: true
 goodsRecievedNoteSchema.index({ status: 1 });
 goodsRecievedNoteSchema.index({ grnDate: 1 });
 goodsRecievedNoteSchema.index({ isDeleted: 1 });

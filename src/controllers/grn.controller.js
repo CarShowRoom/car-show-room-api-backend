@@ -245,7 +245,10 @@ export const createGRN = asyncErrorHandler(async (req, res, next) => {
 
   // Populate references for response
   await newGRN.populate("purchasingId", "status totalAmount");
-  await newGRN.populate("lineItems.inventoryId", "productName productCode SKU");
+  await newGRN.populate(
+    "lineItems.inventoryId",
+    "productName productCode SKU sellingPrice"
+  );
 
   res.status(201).json({
     success: true,
@@ -308,7 +311,6 @@ export const getAllGRN = asyncErrorHandler(async (req, res, next) => {
       "lineItems.inventoryId",
       "productName productCode SKU buyingPrice sellingPrice"
     )
-    .populate("lineItems.warehouseId", "warehouseName warehouseCode")
     .sort(sort)
     .skip(skip)
     .limit(limitNum);
@@ -355,6 +357,27 @@ export const getGRNById = asyncErrorHandler(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: "GRN retrieved successfully",
+    data: grn,
+  });
+});
+
+export const updateGRNStatus = asyncErrorHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  const grn = await GoodsRecievedNote.findByIdAndUpdate(
+    id,
+    { status },
+    { new: true, runValidators: true }
+  );
+
+  if (!grn) {
+    return next(new CustomError(404, "GRN not found"));
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "GRN status updated successfully",
     data: grn,
   });
 });
