@@ -12,6 +12,7 @@ import CustomError from "./utils/customError.js";
 
 import inventoryRouter from "./routes/inventory.route.js";
 import warehouseProfileRouter from "./routes/warehouseProfile.route.js";
+import storefrontProfileRouter from "./routes/storefrontProfile.route.js";
 import supplierProfileRouter from "./routes/supplierProfile.route.js";
 import purchasingRouter from "./routes/purchasing.route.js";
 import warehouseRouter from "./routes/warehouse.route.js";
@@ -38,6 +39,7 @@ app.use(mmTimeZoneMiddleware);
 //Route Mounting
 app.use("/api/v1", inventoryRouter);
 app.use("/api/v1", warehouseProfileRouter);
+app.use("/api/v1", storefrontProfileRouter);
 app.use("/api/v1", supplierProfileRouter);
 app.use("/api/v1", purchasingRouter);
 app.use("/api/v1", warehouseRouter);
