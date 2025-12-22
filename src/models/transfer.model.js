@@ -61,7 +61,16 @@ const transferSchema = new mongoose.Schema(
     destinationWarehouseId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "WarehouseProfile",
-      required: [true, "Destination warehouse is required"],
+      default: null,
+      // Required when sourceType is "GRN" (GRN → Warehouse transfer)
+      // Optional when sourceType is "Warehouse" (Warehouse → Storefront transfer)
+    },
+    destinationStorefrontId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "StorefrontProfile",
+      default: null,
+      // Required when sourceType is "Warehouse" (Warehouse → Storefront transfer)
+      // Optional when sourceType is "GRN" (GRN → Warehouse transfer)
     },
     lineItems: {
       type: [transferLineItemSchema],
@@ -113,15 +122,34 @@ const transferSchema = new mongoose.Schema(
   }
 );
 
+// Pre-save validation: Ensure correct destination based on sourceType
+transferSchema.pre("save", async function () {
+  if (this.sourceType === "GRN") {
+    if (!this.destinationWarehouseId) {
+      throw new Error(
+        "destinationWarehouseId is required when sourceType is 'GRN' (GRN → Warehouse transfer)"
+      );
+    }
+  } else if (this.sourceType === "Warehouse") {
+    if (!this.destinationStorefrontId) {
+      throw new Error(
+        "destinationStorefrontId is required when sourceType is 'Warehouse' (Warehouse → Storefront transfer)"
+      );
+    }
+  }
+});
+
 // Indexes for better query performance
 // Note: transferNumber already has an index from unique: true
 transferSchema.index({ sourceType: 1, sourceId: 1 });
 transferSchema.index({ destinationWarehouseId: 1 });
+transferSchema.index({ destinationStorefrontId: 1 });
 transferSchema.index({ status: 1 });
 transferSchema.index({ transferDate: 1 });
 transferSchema.index({ isDeleted: 1 });
 transferSchema.index({ status: 1, isDeleted: 1 }); // Compound index
 transferSchema.index({ sourceType: 1, sourceId: 1, status: 1 }); // Compound index for GRN/Warehouse queries
+transferSchema.index({ sourceType: 1, destinationStorefrontId: 1 }); // For Warehouse → Storefront queries
 
 // Virtual for total transfer quantity
 transferSchema.virtual("totalQuantity").get(function () {
@@ -159,24 +187,39 @@ transferSchema.statics.generateTransferNumber = async function () {
   return `${prefix}${sequence.toString().padStart(4, "0")}`;
 };
 
-// Instance method to update warehouse stock atomically (call when transfer is completed)
-// Uses MongoDB transactions to ensure ACID properties:
-// 1. Updates GRN line item's transferredQuantity
-// 2. Updates warehouse stock quantity
-// Both operations succeed or both fail
-transferSchema.methods.updateWarehouseStock = async function (session = null) {
+// Instance method to update stock atomically (call when transfer is completed)
+// Uses MongoDB transactions to ensure ACID properties for consistent tracking:
+// For GRN → Warehouse: Updates GRN transferredQuantity + WarehouseStock
+// For Warehouse → Storefront: Updates WarehouseStock + StorefrontInventory
+// All operations succeed or all fail (ACID guarantee)
+transferSchema.methods.updateStock = async function (session = null) {
   if (this.status !== "completed") {
-    throw new Error(
-      "Transfer must be completed before updating warehouse stock"
-    );
+    throw new Error("Transfer must be completed before updating stock");
   }
 
-  if (this.sourceType !== "GRN") {
-    throw new Error(
-      "updateWarehouseStock is only supported for GRN source transfers"
-    );
+  // Validate destination based on sourceType
+  if (this.sourceType === "GRN" && !this.destinationWarehouseId) {
+    throw new Error("GRN transfers require destinationWarehouseId");
   }
 
+  if (this.sourceType === "Warehouse" && !this.destinationStorefrontId) {
+    throw new Error("Warehouse transfers require destinationStorefrontId");
+  }
+
+  // Handle GRN → Warehouse transfers
+  if (this.sourceType === "GRN") {
+    await this._updateGRNToWarehouseStock(session);
+  }
+  // Handle Warehouse → Storefront transfers
+  else if (this.sourceType === "Warehouse") {
+    await this._updateWarehouseToStorefrontStock(session);
+  }
+};
+
+// Private method: Handle GRN → Warehouse stock updates
+transferSchema.methods._updateGRNToWarehouseStock = async function (
+  session = null
+) {
   const WarehouseStock = mongoose.model("WarehouseStock");
   const GoodsRecievedNote = mongoose.model("GoodsRecievedNote");
 
@@ -201,7 +244,8 @@ transferSchema.methods.updateWarehouseStock = async function (session = null) {
       grnLineItem = grn.lineItems.id(transferItem.grnLineItemId);
       if (grnLineItem) {
         grnLineItemIndex = grn.lineItems.findIndex(
-          (item) => item._id.toString() === transferItem.grnLineItemId.toString()
+          (item) =>
+            item._id.toString() === transferItem.grnLineItemId.toString()
         );
       }
     } else {
@@ -273,6 +317,93 @@ transferSchema.methods.updateWarehouseStock = async function (session = null) {
       }
     );
   }
+};
+
+// Private method: Handle Warehouse → Storefront stock updates
+transferSchema.methods._updateWarehouseToStorefrontStock = async function (
+  session = null
+) {
+  const WarehouseStock = mongoose.model("WarehouseStock");
+  const StorefrontInventory = mongoose.model("StorefrontInventory");
+  const WarehouseProfile = mongoose.model("WarehouseProfile");
+
+  // Validate source warehouse exists
+  const sourceWarehouse = await WarehouseProfile.findById(
+    this.sourceId
+  ).session(session || null);
+
+  if (!sourceWarehouse) {
+    throw new Error(`Source warehouse with ID ${this.sourceId} not found`);
+  }
+
+  // Process each transfer line item
+  for (const transferItem of this.lineItems) {
+    if (transferItem.quantity <= 0) continue;
+
+    // Validate warehouse has sufficient stock
+    const warehouseStock = await WarehouseStock.findOne({
+      inventoryId: transferItem.inventoryId,
+      warehouseId: this.sourceId,
+    }).session(session || null);
+
+    if (!warehouseStock) {
+      throw new Error(
+        `Warehouse stock not found for inventory ${transferItem.inventoryId} in warehouse ${this.sourceId}`
+      );
+    }
+
+    const availableQty = warehouseStock.quantity || 0;
+    if (transferItem.quantity > availableQty) {
+      throw new Error(
+        `Transfer quantity (${transferItem.quantity}) exceeds available warehouse stock (${availableQty}) for inventory ${transferItem.inventoryId}`
+      );
+    }
+
+    // Deduct from warehouse stock atomically using $inc
+    await WarehouseStock.findOneAndUpdate(
+      {
+        inventoryId: transferItem.inventoryId,
+        warehouseId: this.sourceId,
+      },
+      {
+        $inc: { quantity: -transferItem.quantity }, // Negative to deduct
+        $set: { lastUpdated: new Date() },
+      },
+      {
+        session,
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    // Add to storefront inventory atomically using $inc
+    await StorefrontInventory.findOneAndUpdate(
+      {
+        inventoryId: transferItem.inventoryId,
+        storefrontId: this.destinationStorefrontId,
+      },
+      {
+        $inc: { quantity: transferItem.quantity },
+        $set: { lastUpdated: new Date() },
+        $setOnInsert: {
+          inventoryId: transferItem.inventoryId,
+          storefrontId: this.destinationStorefrontId,
+          // quantity is handled by $inc - if document doesn't exist, $inc creates it with transferItem.quantity
+        },
+      },
+      {
+        upsert: true,
+        session,
+        new: true,
+        runValidators: true,
+      }
+    );
+  }
+};
+
+// Backward compatibility: Keep old method name that calls new method
+transferSchema.methods.updateWarehouseStock = async function (session = null) {
+  return this.updateStock(session);
 };
 
 const Transfer = mongoose.model("Transfer", transferSchema);
