@@ -313,3 +313,62 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     await session.endSession();
   }
 });
+
+export const getAllOrders = asyncErrorHandler(async (req, res, next) => {
+  const orders = await Order.find({ isDeleted: false })
+    .populate("storefrontId", "storefrontName storefrontCode")
+    .populate("ordersProducts.inventoryId", "productName productCode SKU");
+
+  res.status(200).json({
+    success: true,
+    message: "Orders fetched successfully",
+    data: orders,
+  });
+});
+
+export const getOrders = asyncErrorHandler(async (req, res, next) => {
+  const { orderId } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    return next(new CustomError(400, "Invalid order ID format"));
+  }
+  const order = await Order.findOne({ _id: orderId, isDeleted: false })
+    .populate("storefrontId", "storefrontName storefrontCode")
+    .populate("ordersProducts.inventoryId", "productName productCode SKU");
+
+  if (!order) {
+    return next(new CustomError(404, "Order not found"));
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "Order fetched successfully",
+    data: order,
+  });
+});
+
+export const getOrdersByStorefrontId = asyncErrorHandler(
+  async (req, res, next) => {
+    const { storefrontId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
+      return next(new CustomError(400, "Invalid storefront ID format"));
+    }
+
+    const orders = await Order.find({
+      storefrontId: storefrontId,
+      isDeleted: false,
+    })
+      .sort({ createdAt: -1 }) // Sort by newest first
+      .populate("storefrontId", "storefrontName storefrontCode")
+      .populate("ordersProducts.inventoryId", "productName productCode SKU");
+
+    res.status(200).json({
+      success: true,
+      message: "Orders fetched successfully",
+      data: {
+        count: orders.length,
+        orders,
+      },
+    });
+  }
+);
