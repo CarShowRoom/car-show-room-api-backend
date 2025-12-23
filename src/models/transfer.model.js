@@ -28,6 +28,7 @@ const transferLineItemSchema = new mongoose.Schema(
   },
   {
     _id: true,
+    id: false,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
   }
@@ -117,6 +118,7 @@ const transferSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    id: false,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
   }

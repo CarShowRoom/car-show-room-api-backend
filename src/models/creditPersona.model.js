@@ -23,7 +23,12 @@ const creditPersonSchema = new mongoose.Schema(
       default: null,
     },
   },
-  { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
+  {
+    timestamps: true,
+    id: false,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  }
 );
 
 const CreditPerson = mongoose.model("CreditPerson", creditPersonSchema);

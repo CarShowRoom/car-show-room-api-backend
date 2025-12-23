@@ -107,7 +107,12 @@ const orderSchema = new mongoose.Schema(
       default: "cash",
     },
   },
-  { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
+  {
+    timestamps: true,
+    id: false,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  }
 );
 
 // Pre-save middleware to calculate extraChange if paidAmount or finalAmount changed

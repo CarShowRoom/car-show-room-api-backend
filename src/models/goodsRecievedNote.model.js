@@ -53,6 +53,7 @@ const grnLineItemSchema = new mongoose.Schema(
   },
   {
     _id: true,
+    id: false,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
   }
@@ -170,6 +171,7 @@ const goodsRecievedNoteSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    id: false,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
   }

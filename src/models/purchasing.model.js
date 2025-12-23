@@ -26,6 +26,7 @@ const productSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    id: false,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
   }
@@ -54,7 +55,7 @@ const PurchasingSchema = new mongoose.Schema(
       required: true,
     },
   },
-  { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
+  { timestamps: true, id: false, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
 
 const Purchasing = mongoose.model("Purchasing", PurchasingSchema);
