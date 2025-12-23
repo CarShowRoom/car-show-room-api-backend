@@ -20,7 +20,7 @@ import warehouseRouter from "./routes/warehouse.route.js";
 import grnRouter from "./routes/grn.route.js";
 import transferRouter from "./routes/transfer.route.js";
 import orderRouter from "./routes/order.route.js";
-
+import creditPersonaRouter from "./routes/creditPersona.route.js";
 const app = express();
 app.use(
   helmet({
@@ -49,6 +49,7 @@ app.use("/api/v1", warehouseRouter);
 app.use("/api/v1", grnRouter);
 app.use("/api/v1", transferRouter);
 app.use("/api/v1", orderRouter);
+app.use("/api/v1", creditPersonaRouter);
 //404-Error Handler
 app.all("/*any", (req, res, next) => {
   const err = new CustomError(

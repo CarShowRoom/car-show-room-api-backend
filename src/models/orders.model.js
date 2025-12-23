@@ -1,5 +1,15 @@
 import mongoose from "mongoose";
 
+const creditPersonSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: [true, "Name is required"],
+  },
+  phone: {
+    type: String,
+  },
+});
+
 const orderProductsSchema = new mongoose.Schema({
   inventoryId: {
     type: mongoose.Schema.Types.ObjectId,
