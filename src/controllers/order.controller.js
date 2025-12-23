@@ -16,7 +16,8 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     discount = 0,
     finalAmount,
     paidAmount,
-    paymentType = "cash",
+    paymentType = "paid",
+    paymentMethod = "cash",
   } = req.body;
 
   // Validate required fields
@@ -37,8 +38,8 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
   }
 
   // Validate paymentType
-  const validPaymentTypes = ["cash", "bank", "card", "mobile-banking"];
-  if (!validPaymentTypes.includes(paymentType)) {
+  const validPaymentTypes = ["credit", "paid"];
+  if (paymentType && !validPaymentTypes.includes(paymentType)) {
     return next(
       new CustomError(
         400,
@@ -260,7 +261,8 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
         discount,
         finalAmount: calculatedFinalAmount,
         paidAmount,
-        paymentType,
+        paymentType: paymentType || "paid",
+        paymentMethod: paymentMethod || "cash",
         orderStatus: "completed", // Order is completed when stock is deducted
       };
 

@@ -89,7 +89,11 @@ const orderSchema = new mongoose.Schema(
     },
     paymentType: {
       type: String,
-      enum: ["cash", "bank", "card", "mobile-banking"],
+      enum: ["credit", "paid"],
+      default: "paid",
+    },
+    paymentMethod: {
+      type: String,
       default: "cash",
     },
   },
