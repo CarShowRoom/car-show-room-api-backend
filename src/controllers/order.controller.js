@@ -3,6 +3,7 @@ import Order from "../models/orders.model.js";
 import StorefrontInventory from "../models/storefrontInventory.model.js";
 import StorefrontProfile from "../models/storefrontProfile.model.js";
 import Inventory from "../models/inventory.model.js";
+import CreditPerson from "../models/creditPersona.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 
@@ -18,6 +19,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     paidAmount,
     paymentType = "paid",
     paymentMethod = "cash",
+    creditPersonId,
   } = req.body;
 
   // Validate required fields
@@ -46,6 +48,22 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
         `Invalid payment type. Allowed values: ${validPaymentTypes.join(", ")}`
       )
     );
+  }
+
+  // Validate creditPersonId - only allowed when paymentType is "credit"
+  if (creditPersonId) {
+    if (!mongoose.Types.ObjectId.isValid(creditPersonId)) {
+      return next(new CustomError(400, "Invalid credit person ID format"));
+    }
+
+    if (paymentType !== "credit") {
+      return next(
+        new CustomError(
+          400,
+          "Credit person ID can only be provided when payment type is 'credit'"
+        )
+      );
+    }
   }
 
   // Validate product structure
@@ -117,6 +135,28 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
           400,
           "Cannot create order for deleted storefront"
         );
+      }
+
+      // 1a. Validate credit person exists if creditPersonId is provided
+      let creditPerson = null;
+      if (creditPersonId) {
+        creditPerson = await CreditPerson.findById(creditPersonId).session(
+          session
+        );
+
+        if (!creditPerson) {
+          throw new CustomError(404, "Credit person not found");
+        }
+
+        // Check if credit person is blacklisted
+        if (creditPerson.blacklist) {
+          throw new CustomError(
+            400,
+            `Cannot create order for blacklisted credit person: ${
+              creditPerson.blacklistReason || "No reason provided"
+            }`
+          );
+        }
       }
 
       // 2. Validate all inventory items exist and get their selling prices
@@ -256,6 +296,9 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
         orderNumber,
         storefrontId: new mongoose.Types.ObjectId(storefrontId),
         ordersProducts: validatedProducts,
+        creditPersonId: creditPersonId
+          ? new mongoose.Types.ObjectId(creditPersonId)
+          : null,
         subTotal: finalSubTotal,
         tax,
         discount,
@@ -347,6 +390,120 @@ export const getOrders = asyncErrorHandler(async (req, res, next) => {
     data: order,
   });
 });
+
+// Update/add credit person ID to an order
+export const updateOrderCreditPersonId = asyncErrorHandler(
+  async (req, res, next) => {
+    const { orderId } = req.params;
+    const { creditPersonId } = req.body;
+
+    // Validate orderId
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return next(new CustomError(400, "Invalid order ID format"));
+    }
+
+    // Validate creditPersonId is provided
+    if (!creditPersonId) {
+      return next(new CustomError(400, "Credit person ID is required"));
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(creditPersonId)) {
+      return next(new CustomError(400, "Invalid credit person ID format"));
+    }
+
+    // Start MongoDB session for transaction
+    const session = await mongoose.startSession();
+
+    try {
+      // Start transaction
+      await session.withTransaction(async () => {
+        // 1. Validate order exists and is not deleted
+        const order = await Order.findById(orderId).session(session);
+
+        if (!order) {
+          throw new CustomError(404, "Order not found");
+        }
+
+        if (order.isDeleted) {
+          throw new CustomError(400, "Cannot update deleted order");
+        }
+
+        // 2. Validate order is a credit order
+        if (order.paymentType !== "credit") {
+          throw new CustomError(
+            400,
+            "Can only add credit person to credit orders. This order is not a credit order."
+          );
+        }
+
+        // 3. Validate credit person exists
+        const creditPerson = await CreditPerson.findById(
+          creditPersonId
+        ).session(session);
+
+        if (!creditPerson) {
+          throw new CustomError(404, "Credit person not found");
+        }
+
+        // 4. Check if credit person is blacklisted
+        if (creditPerson.blacklist) {
+          throw new CustomError(
+            400,
+            `Cannot add blacklisted credit person to order: ${
+              creditPerson.blacklistReason || "No reason provided"
+            }`
+          );
+        }
+
+        // 5. Update order with credit person ID
+        order.creditPersonId = new mongoose.Types.ObjectId(creditPersonId);
+        await order.save({ session });
+
+        // 6. Populate references for response
+        await order.populate("storefrontId", "storefrontName storefrontCode");
+        await order.populate("creditPersonId", "name phone");
+        await order.populate(
+          "ordersProducts.inventoryId",
+          "productName productCode SKU"
+        );
+
+        // 7. Send response
+        res.status(200).json({
+          success: true,
+          message: "Credit person ID updated successfully",
+          data: order,
+        });
+      });
+    } catch (error) {
+      // Handle transaction errors
+      if (error instanceof CustomError) {
+        return next(error);
+      }
+
+      // Handle validation errors
+      if (error.name === "ValidationError") {
+        const errors = Object.values(error.errors).map((val) => val.message);
+        return next(
+          new CustomError(400, `Validation error: ${errors.join(". ")}`)
+        );
+      }
+
+      // For other errors, log and return with actual error message
+      console.error("Update credit person ID error:", error);
+      const errorMessage =
+        error?.message || String(error) || "Unknown error occurred";
+      return next(
+        new CustomError(
+          500,
+          `Failed to update credit person ID: ${errorMessage}`
+        )
+      );
+    } finally {
+      // Always end the session
+      await session.endSession();
+    }
+  }
+);
 
 export const getOrdersByStorefrontId = asyncErrorHandler(
   async (req, res, next) => {

@@ -1,15 +1,5 @@
 import mongoose from "mongoose";
 
-const creditPersonSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: [true, "Name is required"],
-  },
-  phone: {
-    type: String,
-  },
-});
-
 const orderProductsSchema = new mongoose.Schema({
   inventoryId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -50,6 +40,11 @@ const orderSchema = new mongoose.Schema(
         },
         message: "Order must have at least one product",
       },
+    },
+    creditPersonId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CreditPerson",
+      default: null,
     },
     subTotal: {
       type: Number,
@@ -130,6 +125,44 @@ orderSchema.pre("save", async function () {
   }
 });
 
+// Virtual for total paid amount (initial + all credit records)
+// Note: This requires CreditRecords to be populated or calculated separately
+orderSchema.virtual("totalPaidAmount").get(async function () {
+  // This virtual won't work with async in getter
+  // Use instance method instead for async calculation
+  return null;
+});
+
+// Instance method to calculate total paid amount (including CreditRecords)
+// Note: order.paidAmount is now updated when credit payments are recorded,
+// so this method returns order.paidAmount directly.
+// This denormalizes the data for better query performance.
+orderSchema.methods.calculateTotalPaidAmount = async function (session = null) {
+  // Since order.paidAmount is updated when credit payments are recorded,
+  // it already includes the initial payment + all credit record payments
+  return this.paidAmount || 0;
+};
+
+// Instance method to calculate remaining balance accurately
+orderSchema.methods.calculateRemainingBalance = async function () {
+  const totalPaid = await this.calculateTotalPaidAmount();
+  if (this.finalAmount == null) {
+    return null;
+  }
+  return Math.max(0, this.finalAmount - totalPaid);
+};
+
+// Virtual for remaining balance (synchronous - only uses initial paidAmount)
+// For accurate calculation with CreditRecords, use calculateRemainingBalance() method
+orderSchema.virtual("remainingBalance").get(function () {
+  if (this.finalAmount == null || this.paidAmount == null) {
+    return null;
+  }
+  // Note: This only considers initial payment, not CreditRecords
+  // Use calculateRemainingBalance() method for accurate calculation
+  return Math.max(0, this.finalAmount - this.paidAmount);
+});
+
 // Static method to generate order number
 orderSchema.statics.generateOrderNumber = async function () {
   const year = new Date().getFullYear();
@@ -168,6 +201,8 @@ orderSchema.index({ createdAt: -1 }); // For recent orders
 orderSchema.index({ orderNumber: 1 }); // For order number lookups
 orderSchema.index({ storefrontId: 1, isDeleted: 1 }); // Compound index for common queries
 orderSchema.index({ orderStatus: 1 }); // For status filtering
+orderSchema.index({ creditPersonId: 1 }); // For credit person queries
+orderSchema.index({ paymentType: 1 }); // For filtering by payment type
 
 const Order = mongoose.model("Order", orderSchema);
 

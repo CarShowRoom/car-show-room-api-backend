@@ -127,7 +127,10 @@ export const getAllStorefrontInventory = asyncErrorHandler(
 
     // Execute query with population
     const stock = await StorefrontInventory.find(query)
-      .populate("inventoryId", "productName productCode SKU category")
+      .populate(
+        "inventoryId",
+        "productName productCode SKU category sellingPrice"
+      )
       .populate("storefrontId", "storefrontName storefrontCode")
       .sort(sort)
       .skip(skip)
