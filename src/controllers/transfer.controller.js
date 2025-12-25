@@ -10,6 +10,15 @@ import CustomError from "../utils/customError.js";
 
 // Create new Transfer (supports both GRN → Warehouse and Warehouse → Storefront)
 export const createTransfer = asyncErrorHandler(async (req, res, next) => {
+  if (!req.user || !req.user._id) {
+    return next(
+      new CustomError(
+        401,
+        "Authentication required. Admin account ID is missing."
+      )
+    );
+  }
+  const transferredBy = req.user._id;
   // Support both camelCase and lowercase for lineItems
   const {
     sourceType, // "GRN" or "Warehouse"
@@ -387,6 +396,7 @@ export const createTransfer = asyncErrorHandler(async (req, res, next) => {
       transferDate: transferDate || new Date(),
       notes: notes || null,
       status: "completed", // Set to completed immediately since we transfer stock now
+      transferredBy,
     };
 
     // Add destination based on transfer type
@@ -430,6 +440,7 @@ export const createTransfer = asyncErrorHandler(async (req, res, next) => {
       "lineItems.inventoryId",
       "productName productCode SKU"
     );
+    await transfer.populate("transferredBy", "name role");
 
     res.status(201).json({
       success: true,
@@ -447,7 +458,10 @@ export const createTransfer = asyncErrorHandler(async (req, res, next) => {
 });
 
 export const getTransfers = asyncErrorHandler(async (req, res, next) => {
-  const transfers = await Transfer.find().lean();
+  const transfers = await Transfer.find()
+    .populate("transferredBy", "name role")
+    .populate("lineItems.inventoryId", "productName productCode SKU")
+    .lean();
   if (!transfers) {
     return next(new CustomError(404, "Transfers not found"));
   }
@@ -460,10 +474,29 @@ export const getTransfers = asyncErrorHandler(async (req, res, next) => {
 
 export const getTransferById = asyncErrorHandler(async (req, res, next) => {
   const { id } = req.params;
-  const transfer = await Transfer.findById(id).lean();
+  const transfer = await Transfer.findById(id)
+    .populate("transferredBy", "name role")
+    .populate("lineItems.inventoryId", "productName productCode SKU");
+
   if (!transfer) {
     return next(new CustomError(404, "Transfer not found"));
   }
+
+  // Populate source and destination based on transfer type
+  if (transfer.sourceType === "GRN") {
+    await transfer.populate("sourceId", "grnNumber status");
+    await transfer.populate(
+      "destinationWarehouseId",
+      "locationName locationCode"
+    );
+  } else if (transfer.sourceType === "Warehouse") {
+    await transfer.populate("sourceId", "locationName locationCode");
+    await transfer.populate(
+      "destinationStorefrontId",
+      "locationName locationCode"
+    );
+  }
+
   res.status(200).json({
     success: true,
     message: "Transfer fetched successfully",
@@ -522,10 +555,7 @@ export const updateTransferStatus = asyncErrorHandler(
           "locationName locationCode"
         );
       } else if (updatedTransfer.sourceType === "Warehouse") {
-        await updatedTransfer.populate(
-          "sourceId",
-          "locationName locationCode"
-        );
+        await updatedTransfer.populate("sourceId", "locationName locationCode");
         await updatedTransfer.populate(
           "destinationStorefrontId",
           "locationName locationCode"
@@ -535,6 +565,7 @@ export const updateTransferStatus = asyncErrorHandler(
         "lineItems.inventoryId",
         "productName productCode SKU"
       );
+      await updatedTransfer.populate("transferredBy", "name role");
 
       res.status(200).json({
         success: true,

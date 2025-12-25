@@ -54,8 +54,18 @@ const PurchasingSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    purchasedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin",
+      required: [true, "Purchased by is required"],
+    },
   },
-  { timestamps: true, id: false, toJSON: { virtuals: true }, toObject: { virtuals: true } }
+  {
+    timestamps: true,
+    id: false,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  }
 );
 
 const Purchasing = mongoose.model("Purchasing", PurchasingSchema);

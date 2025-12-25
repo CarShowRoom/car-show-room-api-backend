@@ -5,6 +5,7 @@ import Inventory from "../models/inventory.model.js";
 
 export const createPurchase = asyncErrorHandler(async (req, res, next) => {
   const { supplierId, products, note, totalAmount } = req.body;
+  const purchasedBy = req.user._id;
 
   if (!supplierId || !products || products.length === 0) {
     return next(new CustomError(400, "Supplier ID and products are required"));
@@ -45,6 +46,7 @@ export const createPurchase = asyncErrorHandler(async (req, res, next) => {
     note: note || "No note available",
     totalAmount,
     status: "pending",
+    purchasedBy,
   });
 
   res.status(201).json({
@@ -55,7 +57,10 @@ export const createPurchase = asyncErrorHandler(async (req, res, next) => {
 });
 
 export const getAllPurchases = asyncErrorHandler(async (req, res, next) => {
-  const purchases = await Purchasing.find();
+  const purchases = await Purchasing.find().populate(
+    "purchasedBy",
+    "name role"
+  );
 
   res.status(200).json({
     success: true,
@@ -67,7 +72,10 @@ export const getAllPurchases = asyncErrorHandler(async (req, res, next) => {
 export const getPurchaseById = asyncErrorHandler(async (req, res, next) => {
   const { id } = req.params;
 
-  const purchase = await Purchasing.findById(id);
+  const purchase = await Purchasing.findById(id).populate(
+    "purchasedBy",
+    "name role"
+  );
 
   if (!purchase) {
     return next(new CustomError(404, "Purchase not found"));

@@ -7,7 +7,7 @@ import CustomError from "../utils/customError.js";
 // Create credit record payment (for partial/full payment on credit orders)
 export const createCreditPayment = asyncErrorHandler(async (req, res, next) => {
   const { orderId, paidAmount, paymentMethod = "cash", notes } = req.body;
-
+  const addedBy = req.user._id;
   // Validate required fields
   if (!orderId) {
     return next(new CustomError(400, "Order ID is required"));
@@ -77,6 +77,7 @@ export const createCreditPayment = asyncErrorHandler(async (req, res, next) => {
         paymentDate: new Date(),
         paymentMethod: paymentMethod || "cash",
         notes: notes || null,
+        addedBy,
       };
 
       const creditRecordArray = await CreditRecord.create([creditRecordData], {

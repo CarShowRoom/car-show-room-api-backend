@@ -30,6 +30,11 @@ const creditRecordSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    addedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin",
+      required: [true, "Added by is required"],
+    },
     isDeleted: {
       type: Boolean,
       default: false,

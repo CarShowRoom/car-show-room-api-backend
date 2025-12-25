@@ -21,6 +21,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     paymentMethod = "cash",
     creditPersonId,
   } = req.body;
+  const soldBy = req.user._id;
 
   // Validate required fields
   if (!storefrontId) {
@@ -308,6 +309,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
         paymentType: paymentType || "paid",
         paymentMethod: paymentMethod || "cash",
         orderStatus: "completed", // Order is completed when stock is deducted
+        soldBy,
       };
 
       const newOrderArray = await Order.create([orderData], { session });

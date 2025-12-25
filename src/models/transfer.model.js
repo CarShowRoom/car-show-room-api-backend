@@ -115,6 +115,11 @@ const transferSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    transferredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin",
+      required: [true, "Transferred by is required"],
+    },
   },
   {
     timestamps: true,
@@ -152,6 +157,7 @@ transferSchema.index({ isDeleted: 1 });
 transferSchema.index({ status: 1, isDeleted: 1 }); // Compound index
 transferSchema.index({ sourceType: 1, sourceId: 1, status: 1 }); // Compound index for GRN/Warehouse queries
 transferSchema.index({ sourceType: 1, destinationStorefrontId: 1 }); // For Warehouse → Storefront queries
+transferSchema.index({ transferredBy: 1 }); // Index for admin who created the transfer
 
 // Virtual for total transfer quantity
 transferSchema.virtual("totalQuantity").get(function () {

@@ -84,6 +84,11 @@ const orderSchema = new mongoose.Schema(
       },
       default: "pending",
     },
+    soldBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin",
+      required: [true, "Sold by is required"],
+    },
     isDeleted: {
       type: Boolean,
       default: false,

@@ -8,9 +8,10 @@ import {
 } from "../controllers/order.controller.js";
 
 const router = express.Router();
+import { protect } from "../controllers/administrationPolicy.controller.js";
 
 // Create new order
-router.post("/order", createOrder);
+router.post("/order", protect, createOrder);
 router.get("/order", getAllOrders);
 router.get("/order/:orderId", getOrders);
 router.get("/order/storefront/:storefrontId", getOrdersByStorefrontId);

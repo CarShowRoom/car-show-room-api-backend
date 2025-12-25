@@ -6,11 +6,12 @@ import {
   getCreditRecordById,
   getCreditRecordsByCreditPersonId,
 } from "../controllers/creditRecord.controller.js";
+import { protect } from "../controllers/administrationPolicy.controller.js";
 
 const router = express.Router();
 
 // Create credit payment for an order
-router.post("/credit-record", createCreditPayment);
+router.post("/credit-record", protect, createCreditPayment);
 
 // Get all credit records (with optional filtering)
 router.get("/credit-record", getAllCreditRecords);
@@ -28,4 +29,3 @@ router.get(
 );
 
 export default router;
-
