@@ -1,8 +1,7 @@
 import mongoose from "mongoose";
 import Transfer from "../models/transfer.model.js";
 import GoodsRecievedNote from "../models/goodsRecievedNote.model.js";
-import WarehouseProfile from "../models/warehouseProfile.model.js";
-import StorefrontProfile from "../models/storefrontProfile.model.js";
+import LocationProfile from "../models/locationProfile.model.js";
 import WarehouseStock from "../models/warehouse.model.js";
 import StorefrontInventory from "../models/storefrontInventory.model.js";
 import Inventory from "../models/inventory.model.js";
@@ -141,7 +140,10 @@ export const createTransfer = asyncErrorHandler(async (req, res, next) => {
     }
 
     // Validate destination warehouse exists
-    const warehouse = await WarehouseProfile.findById(destinationId);
+    const warehouse = await LocationProfile.findOne({
+      _id: destinationId,
+      type: "warehouse",
+    });
     if (!warehouse) {
       return next(new CustomError(404, "Destination warehouse not found"));
     }
@@ -150,7 +152,10 @@ export const createTransfer = asyncErrorHandler(async (req, res, next) => {
     }
   } else if (transferSourceType === "Warehouse") {
     // Validate source warehouse exists
-    const sourceWarehouse = await WarehouseProfile.findById(sourceId);
+    const sourceWarehouse = await LocationProfile.findOne({
+      _id: sourceId,
+      type: "warehouse",
+    });
     if (!sourceWarehouse) {
       return next(new CustomError(404, "Source warehouse not found"));
     }
@@ -161,7 +166,10 @@ export const createTransfer = asyncErrorHandler(async (req, res, next) => {
     }
 
     // Validate destination storefront exists
-    const storefront = await StorefrontProfile.findById(destinationId);
+    const storefront = await LocationProfile.findOne({
+      _id: destinationId,
+      type: "storefront",
+    });
     if (!storefront) {
       return next(new CustomError(404, "Destination storefront not found"));
     }
@@ -409,13 +417,13 @@ export const createTransfer = asyncErrorHandler(async (req, res, next) => {
       await transfer.populate("sourceId", "grnNumber status");
       await transfer.populate(
         "destinationWarehouseId",
-        "warehouseName warehouseCode"
+        "locationName locationCode"
       );
     } else if (transferSourceType === "Warehouse") {
-      await transfer.populate("sourceId", "warehouseName warehouseCode");
+      await transfer.populate("sourceId", "locationName locationCode");
       await transfer.populate(
         "destinationStorefrontId",
-        "storefrontName storefrontCode"
+        "locationName locationCode"
       );
     }
     await transfer.populate(
@@ -511,16 +519,16 @@ export const updateTransferStatus = asyncErrorHandler(
         await updatedTransfer.populate("sourceId", "grnNumber status");
         await updatedTransfer.populate(
           "destinationWarehouseId",
-          "warehouseName warehouseCode"
+          "locationName locationCode"
         );
       } else if (updatedTransfer.sourceType === "Warehouse") {
         await updatedTransfer.populate(
           "sourceId",
-          "warehouseName warehouseCode"
+          "locationName locationCode"
         );
         await updatedTransfer.populate(
           "destinationStorefrontId",
-          "storefrontName storefrontCode"
+          "locationName locationCode"
         );
       }
       await updatedTransfer.populate(

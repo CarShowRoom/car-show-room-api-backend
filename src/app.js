@@ -13,6 +13,7 @@ import CustomError from "./utils/customError.js";
 import inventoryRouter from "./routes/inventory.route.js";
 import warehouseProfileRouter from "./routes/warehouseProfile.route.js";
 import storefrontProfileRouter from "./routes/storefrontProfile.route.js";
+import locationProfileRouter from "./routes/locationProfile.route.js";
 import storefrontInventoryRouter from "./routes/storefrontInventory.route.js";
 import supplierProfileRouter from "./routes/supplierProfile.route.js";
 import purchasingRouter from "./routes/purchasing.route.js";
@@ -22,6 +23,8 @@ import transferRouter from "./routes/transfer.route.js";
 import orderRouter from "./routes/order.route.js";
 import creditRecordRouter from "./routes/creditRecord.route.js";
 import creditPersonaRouter from "./routes/creditPersona.route.js";
+import adminRouter from "./routes/admin.route.js";
+import expenseRouter from "./routes/expense.route.js";
 const app = express();
 app.use(
   helmet({
@@ -43,6 +46,7 @@ app.use(mmTimeZoneMiddleware);
 app.use("/api/v1", inventoryRouter);
 app.use("/api/v1", warehouseProfileRouter);
 app.use("/api/v1", storefrontProfileRouter);
+app.use("/api/v1", locationProfileRouter);
 app.use("/api/v1", storefrontInventoryRouter);
 app.use("/api/v1", supplierProfileRouter);
 app.use("/api/v1", purchasingRouter);
@@ -52,6 +56,8 @@ app.use("/api/v1", transferRouter);
 app.use("/api/v1", orderRouter);
 app.use("/api/v1", creditRecordRouter);
 app.use("/api/v1", creditPersonaRouter);
+app.use("/api/v1", adminRouter);
+app.use("/api/v1", expenseRouter);
 //404-Error Handler
 app.all("/*any", (req, res, next) => {
   const err = new CustomError(

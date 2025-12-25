@@ -4,7 +4,7 @@ const storefrontInventorySchema = new mongoose.Schema(
   {
     storefrontId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "StorefrontProfile",
+      ref: "LocationProfile",
       required: [true, "Storefront is required"],
     },
     inventoryId: {

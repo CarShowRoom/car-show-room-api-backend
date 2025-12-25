@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import { validatePhoneNumber } from "../utils/phoneValidation.utils.js";
-import WarehouseProfile from "../models/warehouseProfile.model.js";
+import LocationProfile from "../models/locationProfile.model.js";
 
 // Create new warehouse profile
 export const createWarehouseProfile = asyncErrorHandler(
@@ -21,8 +21,9 @@ export const createWarehouseProfile = asyncErrorHandler(
 
     // Check if warehouseCode already exists
     if (warehouseCode) {
-      const existingCode = await WarehouseProfile.findOne({
-        warehouseCode: warehouseCode.toUpperCase(),
+      const existingCode = await LocationProfile.findOne({
+        type: "warehouse",
+        locationCode: warehouseCode.toUpperCase(),
         isDeleted: false,
       });
       if (existingCode) {
@@ -32,8 +33,9 @@ export const createWarehouseProfile = asyncErrorHandler(
 
     // Check if warehouseName already exists
     if (warehouseName) {
-      const existingName = await WarehouseProfile.findOne({
-        warehouseName: warehouseName.trim(),
+      const existingName = await LocationProfile.findOne({
+        type: "warehouse",
+        locationName: warehouseName.trim(),
         isDeleted: false,
       });
       if (existingName) {
@@ -49,18 +51,19 @@ export const createWarehouseProfile = asyncErrorHandler(
 
     // Prepare warehouse data
     const warehouseData = {
-      warehouseCode: warehouseCode?.toUpperCase().trim(),
-      warehouseName: warehouseName?.trim(),
-      warehouseAddress: warehouseAddress?.trim(),
-      warehousePhone: phoneValidation.formattedNumber,
-      warehouseEmail: warehouseEmail?.toLowerCase().trim() || null,
+      type: "warehouse",
+      locationCode: warehouseCode?.toUpperCase().trim(),
+      locationName: warehouseName?.trim(),
+      locationAddress: warehouseAddress?.trim(),
+      locationPhone: phoneValidation.formattedNumber,
+      locationEmail: warehouseEmail?.toLowerCase().trim() || null,
       managerName: managerName?.trim() || null,
       status: status || "active",
       description: description?.trim() || undefined,
       notes: notes?.trim() || undefined,
     };
 
-    const newWarehouseProfile = await WarehouseProfile.create(warehouseData);
+    const newWarehouseProfile = await LocationProfile.create(warehouseData);
 
     res.status(201).json({
       success: true,
@@ -83,8 +86,8 @@ export const getAllWarehouseProfiles = asyncErrorHandler(
       includeDeleted = false,
     } = req.query;
 
-    // Build query - exclude soft deleted by default
-    const query = {};
+    // Build query - exclude soft deleted by default, filter by warehouse type
+    const query = { type: "warehouse" };
 
     if (!includeDeleted || includeDeleted === "false") {
       query.isDeleted = false;
@@ -96,9 +99,9 @@ export const getAllWarehouseProfiles = asyncErrorHandler(
 
     if (search) {
       query.$or = [
-        { warehouseName: { $regex: search, $options: "i" } },
-        { warehouseCode: { $regex: search, $options: "i" } },
-        { warehouseAddress: { $regex: search, $options: "i" } },
+        { locationName: { $regex: search, $options: "i" } },
+        { locationCode: { $regex: search, $options: "i" } },
+        { locationAddress: { $regex: search, $options: "i" } },
         { managerName: { $regex: search, $options: "i" } },
       ];
     }
@@ -113,13 +116,13 @@ export const getAllWarehouseProfiles = asyncErrorHandler(
     sort[sortBy] = sortOrder === "asc" ? 1 : -1;
 
     // Execute query
-    const warehouses = await WarehouseProfile.find(query)
+    const warehouses = await LocationProfile.find(query)
       .sort(sort)
       .skip(skip)
       .limit(limitNum);
 
     // Get total count for pagination
-    const total = await WarehouseProfile.countDocuments(query);
+    const total = await LocationProfile.countDocuments(query);
 
     res.status(200).json({
       success: true,
@@ -145,8 +148,9 @@ export const getWarehouseProfileById = asyncErrorHandler(
       return next(new CustomError(400, "Invalid warehouse profile ID format"));
     }
 
-    const warehouse = await WarehouseProfile.findOne({
+    const warehouse = await LocationProfile.findOne({
       _id: id,
+      type: "warehouse",
       isDeleted: false,
     });
 

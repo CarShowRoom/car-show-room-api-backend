@@ -1,6 +1,6 @@
 import StorefrontInventory from "../models/storefrontInventory.model.js";
 import Inventory from "../models/inventory.model.js";
-import StorefrontProfile from "../models/storefrontProfile.model.js";
+import LocationProfile from "../models/locationProfile.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import mongoose from "mongoose";
@@ -30,7 +30,10 @@ export const createStorefrontInventory = asyncErrorHandler(
     }
 
     // Check if storefront exists
-    const storefront = await StorefrontProfile.findById(storefrontId);
+    const storefront = await LocationProfile.findOne({
+      _id: storefrontId,
+      type: "storefront",
+    });
     if (!storefront) {
       return next(new CustomError(404, "Storefront not found"));
     }
@@ -63,7 +66,7 @@ export const createStorefrontInventory = asyncErrorHandler(
 
     // Populate references for response
     await stock.populate("inventoryId", "productName productCode");
-    await stock.populate("storefrontId", "storefrontName storefrontCode");
+    await stock.populate("storefrontId", "locationName locationCode");
 
     res.status(201).json({
       success: true,
@@ -131,7 +134,7 @@ export const getAllStorefrontInventory = asyncErrorHandler(
         "inventoryId",
         "productName productCode SKU category sellingPrice"
       )
-      .populate("storefrontId", "storefrontName storefrontCode")
+      .populate("storefrontId", "locationName locationCode")
       .sort(sort)
       .skip(skip)
       .limit(limitNum);
@@ -172,7 +175,7 @@ export const getStorefrontInventoryById = asyncErrorHandler(
       )
       .populate(
         "storefrontId",
-        "storefrontName storefrontCode storefrontAddress"
+        "locationName locationCode locationAddress"
       );
 
     if (!stock) {

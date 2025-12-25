@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import { validatePhoneNumber } from "../utils/phoneValidation.utils.js";
-import StorefrontProfile from "../models/storefrontProfile.model.js";
+import LocationProfile from "../models/locationProfile.model.js";
 
 // Create new storefront profile
 export const createStorefrontProfile = asyncErrorHandler(
@@ -21,8 +21,9 @@ export const createStorefrontProfile = asyncErrorHandler(
 
     // Check if storefrontCode already exists
     if (storefrontCode) {
-      const existingCode = await StorefrontProfile.findOne({
-        storefrontCode: storefrontCode.toUpperCase(),
+      const existingCode = await LocationProfile.findOne({
+        type: "storefront",
+        locationCode: storefrontCode.toUpperCase(),
         isDeleted: false,
       });
       if (existingCode) {
@@ -32,8 +33,9 @@ export const createStorefrontProfile = asyncErrorHandler(
 
     // Check if storefrontName already exists
     if (storefrontName) {
-      const existingName = await StorefrontProfile.findOne({
-        storefrontName: storefrontName.trim(),
+      const existingName = await LocationProfile.findOne({
+        type: "storefront",
+        locationName: storefrontName.trim(),
         isDeleted: false,
       });
       if (existingName) {
@@ -49,18 +51,19 @@ export const createStorefrontProfile = asyncErrorHandler(
 
     // Prepare storefront data
     const storefrontData = {
-      storefrontCode: storefrontCode?.toUpperCase().trim(),
-      storefrontName: storefrontName?.trim(),
-      storefrontAddress: storefrontAddress?.trim(),
-      storefrontPhone: phoneValidation.formattedNumber,
-      storefrontEmail: storefrontEmail?.toLowerCase().trim() || null,
+      type: "storefront",
+      locationCode: storefrontCode?.toUpperCase().trim(),
+      locationName: storefrontName?.trim(),
+      locationAddress: storefrontAddress?.trim(),
+      locationPhone: phoneValidation.formattedNumber,
+      locationEmail: storefrontEmail?.toLowerCase().trim() || null,
       managerName: managerName?.trim() || null,
       status: status || "active",
       description: description?.trim() || undefined,
       notes: notes?.trim() || undefined,
     };
 
-    const newStorefrontProfile = await StorefrontProfile.create(storefrontData);
+    const newStorefrontProfile = await LocationProfile.create(storefrontData);
 
     res.status(201).json({
       success: true,
@@ -83,8 +86,8 @@ export const getAllStorefrontProfiles = asyncErrorHandler(
       includeDeleted = false,
     } = req.query;
 
-    // Build query - exclude soft deleted by default
-    const query = {};
+    // Build query - exclude soft deleted by default, filter by storefront type
+    const query = { type: "storefront" };
 
     if (!includeDeleted || includeDeleted === "false") {
       query.isDeleted = false;
@@ -96,9 +99,9 @@ export const getAllStorefrontProfiles = asyncErrorHandler(
 
     if (search) {
       query.$or = [
-        { storefrontName: { $regex: search, $options: "i" } },
-        { storefrontCode: { $regex: search, $options: "i" } },
-        { storefrontAddress: { $regex: search, $options: "i" } },
+        { locationName: { $regex: search, $options: "i" } },
+        { locationCode: { $regex: search, $options: "i" } },
+        { locationAddress: { $regex: search, $options: "i" } },
         { managerName: { $regex: search, $options: "i" } },
       ];
     }
@@ -113,13 +116,13 @@ export const getAllStorefrontProfiles = asyncErrorHandler(
     sort[sortBy] = sortOrder === "asc" ? 1 : -1;
 
     // Execute query
-    const storefronts = await StorefrontProfile.find(query)
+    const storefronts = await LocationProfile.find(query)
       .sort(sort)
       .skip(skip)
       .limit(limitNum);
 
     // Get total count for pagination
-    const total = await StorefrontProfile.countDocuments(query);
+    const total = await LocationProfile.countDocuments(query);
 
     res.status(200).json({
       success: true,
@@ -145,8 +148,9 @@ export const getStorefrontProfileById = asyncErrorHandler(
       return next(new CustomError(400, "Invalid storefront profile ID format"));
     }
 
-    const storefront = await StorefrontProfile.findOne({
+    const storefront = await LocationProfile.findOne({
       _id: id,
+      type: "storefront",
       isDeleted: false,
     });
 
@@ -161,4 +165,3 @@ export const getStorefrontProfileById = asyncErrorHandler(
     });
   }
 );
-

@@ -9,7 +9,7 @@ const warehouseStockSchema = new mongoose.Schema(
     },
     warehouseId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "WarehouseProfile",
+      ref: "LocationProfile",
       required: [true, "Warehouse is required"],
     },
     quantity: {

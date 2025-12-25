@@ -1,6 +1,6 @@
 import WarehouseStock from "../models/warehouse.model.js";
 import Inventory from "../models/inventory.model.js";
-import WarehouseProfile from "../models/warehouseProfile.model.js";
+import LocationProfile from "../models/locationProfile.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import mongoose from "mongoose";
@@ -30,7 +30,10 @@ export const createWarehouseStock = asyncErrorHandler(
     }
 
     // Check if warehouse exists
-    const warehouse = await WarehouseProfile.findById(warehouseId);
+    const warehouse = await LocationProfile.findOne({
+      _id: warehouseId,
+      type: "warehouse",
+    });
     if (!warehouse) {
       return next(new CustomError(404, "Warehouse not found"));
     }
@@ -58,7 +61,7 @@ export const createWarehouseStock = asyncErrorHandler(
 
     // Populate references for response
     await stock.populate("inventoryId", "productName productCode");
-    await stock.populate("warehouseId", "warehouseName warehouseCode");
+    await stock.populate("warehouseId", "locationName locationCode");
 
     res.status(201).json({
       success: true,
@@ -114,7 +117,7 @@ export const getAllWarehouseStock = asyncErrorHandler(
     // Execute query with population
     const stock = await WarehouseStock.find(query)
       .populate("inventoryId", "productName productCode SKU category")
-      .populate("warehouseId", "warehouseName warehouseCode")
+      .populate("warehouseId", "locationName locationCode")
       .sort(sort)
       .skip(skip)
       .limit(limitNum);
@@ -150,7 +153,7 @@ export const getWarehouseStockById = asyncErrorHandler(
         "inventoryId",
         "productName productCode SKU category buyingPrice sellingPrice"
       )
-      .populate("warehouseId", "warehouseName warehouseCode warehouseAddress");
+      .populate("warehouseId", "locationName locationCode locationAddress");
 
     if (!stock) {
       return next(new CustomError(404, "Warehouse stock not found"));
@@ -220,7 +223,7 @@ export const updateWarehouseStockQuantity = asyncErrorHandler(
       { new: true, runValidators: true }
     )
       .populate("inventoryId", "productName productCode SKU category")
-      .populate("warehouseId", "warehouseName warehouseCode");
+      .populate("warehouseId", "locationName locationCode");
 
     // Determine action type for response message
     const actionType = quantityChange > 0 ? "add" : "remove";

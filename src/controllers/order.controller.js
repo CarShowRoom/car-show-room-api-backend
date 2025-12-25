@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import Order from "../models/orders.model.js";
 import StorefrontInventory from "../models/storefrontInventory.model.js";
-import StorefrontProfile from "../models/storefrontProfile.model.js";
+import LocationProfile from "../models/locationProfile.model.js";
 import Inventory from "../models/inventory.model.js";
 import CreditPerson from "../models/creditPersona.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
@@ -122,9 +122,10 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     // Start transaction
     await session.withTransaction(async () => {
       // 1. Validate storefront exists and is not deleted
-      const storefront = await StorefrontProfile.findById(storefrontId).session(
-        session
-      );
+      const storefront = await LocationProfile.findOne({
+        _id: storefrontId,
+        type: "storefront",
+      }).session(session);
 
       if (!storefront) {
         throw new CustomError(404, "Storefront not found");
@@ -313,7 +314,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
       const newOrder = newOrderArray[0];
 
       // 7. Populate references for response (inside transaction for consistency)
-      await newOrder.populate("storefrontId", "storefrontName storefrontCode");
+      await newOrder.populate("storefrontId", "locationName locationCode");
       await newOrder.populate(
         "ordersProducts.inventoryId",
         "productName productCode SKU"
@@ -361,7 +362,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
 
 export const getAllOrders = asyncErrorHandler(async (req, res, next) => {
   const orders = await Order.find({ isDeleted: false })
-    .populate("storefrontId", "storefrontName storefrontCode")
+    .populate("storefrontId", "locationName locationCode")
     .populate("ordersProducts.inventoryId", "productName productCode SKU");
 
   res.status(200).json({
@@ -377,7 +378,7 @@ export const getOrders = asyncErrorHandler(async (req, res, next) => {
     return next(new CustomError(400, "Invalid order ID format"));
   }
   const order = await Order.findOne({ _id: orderId, isDeleted: false })
-    .populate("storefrontId", "storefrontName storefrontCode")
+    .populate("storefrontId", "locationName locationCode")
     .populate("ordersProducts.inventoryId", "productName productCode SKU");
 
   if (!order) {
@@ -518,7 +519,7 @@ export const getOrdersByStorefrontId = asyncErrorHandler(
       isDeleted: false,
     })
       .sort({ createdAt: -1 }) // Sort by newest first
-      .populate("storefrontId", "storefrontName storefrontCode")
+      .populate("storefrontId", "locationName locationCode")
       .populate("ordersProducts.inventoryId", "productName productCode SKU");
 
     res.status(200).json({

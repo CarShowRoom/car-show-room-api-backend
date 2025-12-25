@@ -29,7 +29,7 @@ const orderSchema = new mongoose.Schema(
     },
     storefrontId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "StorefrontProfile",
+      ref: "LocationProfile",
       required: [true, "Storefront is required"],
     },
     ordersProducts: {
@@ -198,7 +198,7 @@ orderSchema.statics.generateOrderNumber = async function () {
 orderSchema.index({ storefrontId: 1 });
 orderSchema.index({ isDeleted: 1 });
 orderSchema.index({ createdAt: -1 }); // For recent orders
-orderSchema.index({ orderNumber: 1 }); // For order number lookups
+// Note: orderNumber index is automatically created by unique: true in schema
 orderSchema.index({ storefrontId: 1, isDeleted: 1 }); // Compound index for common queries
 orderSchema.index({ orderStatus: 1 }); // For status filtering
 orderSchema.index({ creditPersonId: 1 }); // For credit person queries

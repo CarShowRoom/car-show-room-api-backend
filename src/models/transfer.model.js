@@ -57,18 +57,18 @@ const transferSchema = new mongoose.Schema(
       required: [true, "Source ID is required"],
       // Dynamic reference based on sourceType
       // If sourceType is "GRN", this references GoodsRecievedNote
-      // If sourceType is "Warehouse", this references WarehouseProfile
+      // If sourceType is "Warehouse", this references LocationProfile (type: "warehouse")
     },
     destinationWarehouseId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "WarehouseProfile",
+      ref: "LocationProfile",
       default: null,
       // Required when sourceType is "GRN" (GRN → Warehouse transfer)
       // Optional when sourceType is "Warehouse" (Warehouse → Storefront transfer)
     },
     destinationStorefrontId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "StorefrontProfile",
+      ref: "LocationProfile",
       default: null,
       // Required when sourceType is "Warehouse" (Warehouse → Storefront transfer)
       // Optional when sourceType is "GRN" (GRN → Warehouse transfer)
@@ -327,12 +327,13 @@ transferSchema.methods._updateWarehouseToStorefrontStock = async function (
 ) {
   const WarehouseStock = mongoose.model("WarehouseStock");
   const StorefrontInventory = mongoose.model("StorefrontInventory");
-  const WarehouseProfile = mongoose.model("WarehouseProfile");
+  const LocationProfile = mongoose.model("LocationProfile");
 
   // Validate source warehouse exists
-  const sourceWarehouse = await WarehouseProfile.findById(
-    this.sourceId
-  ).session(session || null);
+  const sourceWarehouse = await LocationProfile.findOne({
+    _id: this.sourceId,
+    type: "warehouse",
+  }).session(session || null);
 
   if (!sourceWarehouse) {
     throw new Error(`Source warehouse with ID ${this.sourceId} not found`);
