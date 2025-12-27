@@ -365,30 +365,12 @@ export const getCreditRecordsByCreditPersonId = asyncErrorHandler(
       0
     );
 
-    // Calculate total outstanding for all orders (optimized - orders already have finalAmount and paidAmount)
-    const orderIds = orders.map((order) => order._id);
-
-    // Get all credit records for these orders in one query (already fetched above as allCreditRecords)
-    // Group credit records by orderId for efficient calculation
-    const creditRecordsByOrder = {};
-    allCreditRecords.forEach((record) => {
-      const orderIdStr = record.orderId.toString();
-      if (!creditRecordsByOrder[orderIdStr]) {
-        creditRecordsByOrder[orderIdStr] = [];
-      }
-      creditRecordsByOrder[orderIdStr].push(record);
-    });
-
     // Calculate outstanding for each order
+    // Note: order.paidAmount already includes all credit payments (updated when each credit payment is recorded)
+    // So we can use it directly as the total paid amount
     let totalOutstanding = 0;
     for (const order of orders) {
-      const orderIdStr = order._id.toString();
-      const orderCreditRecords = creditRecordsByOrder[orderIdStr] || [];
-      const orderCreditPayments = orderCreditRecords.reduce(
-        (sum, record) => sum + (record.paidAmount || 0),
-        0
-      );
-      const orderTotalPaid = (order.paidAmount || 0) + orderCreditPayments;
+      const orderTotalPaid = order.paidAmount || 0;
       const orderOutstanding = order.finalAmount - orderTotalPaid;
       totalOutstanding += Math.max(0, orderOutstanding);
     }
