@@ -11,22 +11,7 @@ import {
 
 const router = express.Router();
 
-router.post(
-  "/expense",
-  protect,
-  permissionGranted("owner", "cashier"),
-  createExpense
-);
-router.get(
-  "/expense",
-  protect,
-  permissionGranted("owner", "cashier"),
-  getExpenses
-);
-router.get(
-  "/expense/:id",
-  protect,
-  permissionGranted("owner", "cashier"),
-  getExpenseById
-);
+router.post("/expense", protect, createExpense);
+router.get("/expense", protect, getExpenses);
+router.get("/expense/:id", protect, getExpenseById);
 export default router;
