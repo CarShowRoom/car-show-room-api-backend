@@ -4,6 +4,10 @@ import LocationProfile from "../models/locationProfile.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import mongoose from "mongoose";
+import {
+  createStockAuditLog,
+  determineActionType,
+} from "../services/stockAuditLog.service.js";
 
 export const createStorefrontInventory = asyncErrorHandler(
   async (req, res, next) => {
@@ -173,10 +177,7 @@ export const getStorefrontInventoryById = asyncErrorHandler(
         "inventoryId",
         "productName productCode SKU category buyingPrice sellingPrice"
       )
-      .populate(
-        "storefrontId",
-        "locationName locationCode locationAddress"
-      );
+      .populate("storefrontId", "locationName locationCode locationAddress");
 
     if (!stock) {
       return next(new CustomError(404, "Storefront inventory not found"));
@@ -187,5 +188,161 @@ export const getStorefrontInventoryById = asyncErrorHandler(
       message: "Storefront inventory retrieved successfully",
       data: stock,
     });
+  }
+);
+
+// Update storefront inventory quantity with ACID properties
+// Uses quantityChange: positive number = add, negative number = subtract
+export const updateStorefrontInventoryQuantity = asyncErrorHandler(
+  async (req, res, next) => {
+    const { id } = req.params;
+    const { quantityChange, reason } = req.body;
+
+    // Validate MongoDB ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(
+        new CustomError(400, "Invalid storefront inventory ID format")
+      );
+    }
+
+    // Validate quantityChange
+    if (
+      typeof quantityChange !== "number" ||
+      quantityChange === 0 ||
+      !Number.isFinite(quantityChange)
+    ) {
+      return next(
+        new CustomError(
+          400,
+          "A valid non-zero numeric 'quantityChange' is required. Use positive number to add, negative number to subtract."
+        )
+      );
+    }
+
+    // Get admin ID from authenticated user
+    const adminId = req.user?._id;
+    if (!adminId) {
+      return next(
+        new CustomError(401, "Authentication required. Admin ID not found.")
+      );
+    }
+
+    // Start MongoDB session for transaction (ACID properties)
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      // Find the stock before the update to get the current quantity
+      // Populate inventoryId to get product name for error messages
+      const stockToUpdate = await StorefrontInventory.findById(id)
+        .populate("inventoryId", "productName productCode SKU")
+        .populate("storefrontId", "locationName locationCode type")
+        .session(session);
+
+      if (!stockToUpdate) {
+        await session.abortTransaction();
+        session.endSession();
+        return next(new CustomError(404, "Storefront inventory not found"));
+      }
+
+      // Validate storefront exists and is not deleted
+      if (stockToUpdate.storefrontId?.isDeleted) {
+        await session.abortTransaction();
+        session.endSession();
+        return next(new CustomError(404, "Storefront is deleted"));
+      }
+
+      // Validate location type
+      if (stockToUpdate.storefrontId?.type !== "storefront") {
+        await session.abortTransaction();
+        session.endSession();
+        return next(new CustomError(400, "Location is not a storefront"));
+      }
+
+      const beforeQuantity = stockToUpdate.quantity || 0;
+      const afterQuantity = beforeQuantity + quantityChange;
+
+      // Validate that the new quantity won't be negative
+      if (afterQuantity < 0) {
+        await session.abortTransaction();
+        session.endSession();
+        return next(
+          new CustomError(
+            400,
+            `Cannot update storefront inventory quantity. Current quantity: ${beforeQuantity}, requested change: ${quantityChange}. This would result in a negative quantity (${afterQuantity}).`
+          )
+        );
+      }
+
+      // Perform the update using findByIdAndUpdate with $inc for atomic operation
+      const updatedStock = await StorefrontInventory.findByIdAndUpdate(
+        id,
+        {
+          $inc: { quantity: quantityChange },
+          $set: { lastUpdated: new Date() },
+        },
+        { new: true, runValidators: true, session }
+      )
+        .populate("inventoryId", "productName productCode SKU category")
+        .populate("storefrontId", "locationName locationCode");
+
+      // Create audit log entry
+      const action = determineActionType(quantityChange, false);
+      await createStockAuditLog({
+        inventoryId: stockToUpdate.inventoryId._id,
+        adminId: adminId,
+        locationId: stockToUpdate.storefrontId._id,
+        locationType: "storefront",
+        stockRecordId: id,
+        beforeQuantity: beforeQuantity,
+        afterQuantity: afterQuantity,
+        quantityChange: quantityChange,
+        action: action,
+        reason: reason || null,
+        relatedTransactionId: null,
+        relatedTransactionType: null,
+        session: session,
+      });
+
+      // Commit the transaction
+      await session.commitTransaction();
+      session.endSession();
+
+      // Determine action type for response message
+      const actionType = quantityChange > 0 ? "add" : "remove";
+      const actionMessage =
+        quantityChange > 0
+          ? `increased by ${Math.abs(quantityChange)}`
+          : `decreased by ${Math.abs(quantityChange)}`;
+
+      res.status(200).json({
+        success: true,
+        message: `Storefront inventory quantity ${actionMessage} successfully. New quantity: ${updatedStock.quantity}`,
+        data: updatedStock,
+        operation: {
+          type: actionType,
+          previousQuantity: beforeQuantity,
+          newQuantity: updatedStock.quantity,
+          quantityChange: quantityChange,
+        },
+      });
+    } catch (error) {
+      // Abort transaction on error
+      await session.abortTransaction();
+      session.endSession();
+
+      // If it's already a CustomError, pass it through
+      if (error instanceof CustomError) {
+        return next(error);
+      }
+
+      // Otherwise, create a new error
+      return next(
+        new CustomError(
+          500,
+          `Failed to update storefront inventory quantity: ${error.message}`
+        )
+      );
+    }
   }
 );

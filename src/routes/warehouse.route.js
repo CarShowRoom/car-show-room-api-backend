@@ -5,7 +5,7 @@ import {
   getWarehouseStockById,
   updateWarehouseStockQuantity,
 } from "../controllers/warehouse.controller.js";
-
+import { protect } from "../controllers/administrationPolicy.controller.js";
 const router = express.Router();
 
 // Create new warehouse stock record
@@ -18,6 +18,6 @@ router.get("/warehouse", getAllWarehouseStock);
 router.get("/warehouse/:id", getWarehouseStockById);
 
 // Update warehouse stock quantity
-router.patch("/warehouse/:id/quantity", updateWarehouseStockQuantity);
+router.patch("/warehouse/:id/quantity", protect, updateWarehouseStockQuantity);
 
 export default router;
