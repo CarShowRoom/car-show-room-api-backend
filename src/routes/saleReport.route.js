@@ -1,5 +1,9 @@
 import express from "express";
-import { getSaleReportByStorefrontId } from "../controllers/saleReport.controller.js";
+import {
+  getSaleReportByStorefrontId,
+  getPaymentMethodReportByStorefrontId,
+  getCreditSaleReportByStorefrontId,
+} from "../controllers/saleReport.controller.js";
 
 const router = express.Router();
 
@@ -7,6 +11,18 @@ const router = express.Router();
 router.get(
   "/sale-report/storefront/:storefrontId",
   getSaleReportByStorefrontId
+);
+
+// Payment method breakdown report for storefront (paid orders only)
+router.get(
+  "/sale-report/storefront/:storefrontId/paid-orders",
+  getPaymentMethodReportByStorefrontId
+);
+
+// Credit sale report with credit records breakdown
+router.get(
+  "/sale-report/storefront/:storefrontId/credit-orders",
+  getCreditSaleReportByStorefrontId
 );
 
 export default router;

@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import CustomError from "../utils/customError.js";
 import LocationProfile from "../models/locationProfile.model.js";
 import Order from "../models/orders.model.js";
+import CreditRecord from "../models/creditRecord.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import { createDateFilter } from "../utils/dateFilter.utils.js";
 
@@ -122,6 +123,314 @@ export const getSaleReportByStorefrontId = asyncErrorHandler(
           creditOrderCount: report.creditOrderCount,
           paidOrderCount: report.paidOrderCount,
         },
+      },
+    });
+  }
+);
+
+// Get payment method breakdown report for a specific storefront (paid orders only)
+export const getPaymentMethodReportByStorefrontId = asyncErrorHandler(
+  async (req, res, next) => {
+    const { storefrontId } = req.params;
+
+    // Validate storefrontId
+    if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
+      return next(new CustomError(400, "Invalid storefront ID format"));
+    }
+
+    // Validate storefront exists
+    const storefront = await LocationProfile.findOne({
+      _id: storefrontId,
+      type: "storefront",
+      isDeleted: false,
+    });
+
+    if (!storefront) {
+      return next(new CustomError(404, "Storefront not found"));
+    }
+
+    // Build query filter - only paid orders
+    const filter = {
+      storefrontId: new mongoose.Types.ObjectId(storefrontId),
+      isDeleted: false,
+      orderStatus: "completed", // Only include completed orders
+      paymentType: "paid", // Only paid orders
+    };
+
+    // Add date range filter using dateFilter utility
+    let parsedStartDate = null;
+    let parsedEndDate = null;
+    try {
+      const dateFilter = createDateFilter(req.query, "createdAt", false);
+      Object.assign(filter, dateFilter);
+
+      // Extract parsed dates from the filter for response
+      if (dateFilter.createdAt) {
+        if (dateFilter.createdAt.$gte) {
+          parsedStartDate = dateFilter.createdAt.$gte;
+        }
+        if (dateFilter.createdAt.$lte) {
+          parsedEndDate = dateFilter.createdAt.$lte;
+        }
+      }
+    } catch (error) {
+      // If it's a CustomError, pass it to error handler
+      if (error instanceof CustomError) {
+        return next(error);
+      }
+      // For other errors, wrap and pass
+      return next(new CustomError(400, error.message || "Invalid date filter"));
+    }
+
+    // Aggregate payment method breakdown
+    const paymentMethodReport = await Order.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: "$paymentMethod", // Group by payment method
+          totalPaidAmount: { $sum: "$paidAmount" },
+          orderCount: { $sum: 1 },
+          totalFinalAmount: { $sum: "$finalAmount" },
+        },
+      },
+      {
+        $sort: { totalPaidAmount: -1 }, // Sort by total paid amount descending
+      },
+    ]);
+
+    // Calculate totals across all payment methods
+    const totals = paymentMethodReport.reduce(
+      (acc, item) => {
+        acc.totalPaidAmount += item.totalPaidAmount;
+        acc.totalFinalAmount += item.totalFinalAmount;
+        acc.totalOrderCount += item.orderCount;
+        return acc;
+      },
+      {
+        totalPaidAmount: 0,
+        totalFinalAmount: 0,
+        totalOrderCount: 0,
+      }
+    );
+
+    // Get date range info
+    const { startDate, endDate } = req.query;
+    const dateRange = {
+      startDate: parsedStartDate || (startDate ? new Date(startDate) : null),
+      endDate: parsedEndDate || (endDate ? new Date(endDate) : null),
+    };
+
+    res.status(200).json({
+      success: true,
+      message: "Payment method report fetched successfully",
+      data: {
+        storefront: {
+          _id: storefront._id,
+          locationName: storefront.locationName,
+          locationCode: storefront.locationCode,
+        },
+        dateRange,
+        totals: {
+          totalPaidAmount: totals.totalPaidAmount,
+          totalFinalAmount: totals.totalFinalAmount,
+          totalOrderCount: totals.totalOrderCount,
+        },
+        paymentMethods: paymentMethodReport.map((item) => ({
+          paymentMethod: item._id || "unknown",
+          totalPaidAmount: item.totalPaidAmount,
+          totalFinalAmount: item.totalFinalAmount,
+          orderCount: item.orderCount,
+        })),
+      },
+    });
+  }
+);
+
+// Get credit sale report with credit records breakdown for a specific storefront
+export const getCreditSaleReportByStorefrontId = asyncErrorHandler(
+  async (req, res, next) => {
+    const { storefrontId } = req.params;
+
+    // Validate storefrontId
+    if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
+      return next(new CustomError(400, "Invalid storefront ID format"));
+    }
+
+    // Validate storefront exists
+    const storefront = await LocationProfile.findOne({
+      _id: storefrontId,
+      type: "storefront",
+      isDeleted: false,
+    });
+
+    if (!storefront) {
+      return next(new CustomError(404, "Storefront not found"));
+    }
+
+    // Build query filter - only credit orders
+    const filter = {
+      storefrontId: new mongoose.Types.ObjectId(storefrontId),
+      isDeleted: false,
+      orderStatus: "completed", // Only include completed orders
+      paymentType: "credit", // Only credit orders
+    };
+
+    // Add date range filter using dateFilter utility
+    let parsedStartDate = null;
+    let parsedEndDate = null;
+    try {
+      const dateFilter = createDateFilter(req.query, "createdAt", false);
+      Object.assign(filter, dateFilter);
+
+      // Extract parsed dates from the filter for response
+      if (dateFilter.createdAt) {
+        if (dateFilter.createdAt.$gte) {
+          parsedStartDate = dateFilter.createdAt.$gte;
+        }
+        if (dateFilter.createdAt.$lte) {
+          parsedEndDate = dateFilter.createdAt.$lte;
+        }
+      }
+    } catch (error) {
+      // If it's a CustomError, pass it to error handler
+      if (error instanceof CustomError) {
+        return next(error);
+      }
+      // For other errors, wrap and pass
+      return next(new CustomError(400, error.message || "Invalid date filter"));
+    }
+
+    // Get all credit orders
+    const creditOrders = await Order.find(filter).select(
+      "_id orderNumber finalAmount paidAmount paymentMethod createdAt"
+    );
+
+    const orderIds = creditOrders.map((order) => order._id);
+
+    // Get all credit records for these orders
+    const creditRecords = await CreditRecord.find({
+      orderId: { $in: orderIds },
+      isDeleted: false,
+    }).select("orderId paidAmount paymentMethod paymentDate");
+
+    // Create a map of orderId to credit records
+    const creditRecordsByOrder = {};
+    creditRecords.forEach((record) => {
+      const orderIdStr = record.orderId.toString();
+      if (!creditRecordsByOrder[orderIdStr]) {
+        creditRecordsByOrder[orderIdStr] = [];
+      }
+      creditRecordsByOrder[orderIdStr].push(record);
+    });
+
+    // Calculate initial payments and group by payment method
+    const initialPaymentByMethod = {};
+    const creditPaymentByMethod = {};
+    let totalFinalAmount = 0;
+    let totalPaidAmount = 0;
+    let totalInitialPaidAmount = 0;
+    let totalCreditPaidAmount = 0;
+    let totalRemainingBalance = 0;
+    let orderCount = 0;
+
+    creditOrders.forEach((order) => {
+      const orderIdStr = order._id.toString();
+      const creditRecordsForOrder = creditRecordsByOrder[orderIdStr] || [];
+
+      // Calculate total from credit records
+      const totalCreditPaidForOrder = creditRecordsForOrder.reduce(
+        (sum, record) => sum + (record.paidAmount || 0),
+        0
+      );
+
+      // Calculate initial paid amount: order.paidAmount - total from credit records
+      // Note: order.paidAmount includes initial + all credit payments (denormalized)
+      const initialPaidAmount = Math.max(
+        0,
+        (order.paidAmount || 0) - totalCreditPaidForOrder
+      );
+
+      // Get initial payment method from order
+      const initialPaymentMethod = order.paymentMethod || "cash";
+
+      // Aggregate initial payments by payment method
+      if (!initialPaymentByMethod[initialPaymentMethod]) {
+        initialPaymentByMethod[initialPaymentMethod] = {
+          paymentMethod: initialPaymentMethod,
+          totalPaidAmount: 0,
+          orderCount: 0,
+        };
+      }
+      initialPaymentByMethod[initialPaymentMethod].totalPaidAmount +=
+        initialPaidAmount;
+      if (initialPaidAmount > 0) {
+        initialPaymentByMethod[initialPaymentMethod].orderCount += 1;
+      }
+
+      // Aggregate credit record payments by payment method
+      creditRecordsForOrder.forEach((record) => {
+        const paymentMethod = record.paymentMethod || "cash";
+        if (!creditPaymentByMethod[paymentMethod]) {
+          creditPaymentByMethod[paymentMethod] = {
+            paymentMethod: paymentMethod,
+            totalPaidAmount: 0,
+            recordCount: 0,
+          };
+        }
+        creditPaymentByMethod[paymentMethod].totalPaidAmount +=
+          record.paidAmount || 0;
+        creditPaymentByMethod[paymentMethod].recordCount += 1;
+      });
+
+      // Aggregate totals
+      totalFinalAmount += order.finalAmount || 0;
+      totalPaidAmount += order.paidAmount || 0;
+      totalInitialPaidAmount += initialPaidAmount;
+      totalCreditPaidAmount += totalCreditPaidForOrder;
+      totalRemainingBalance += Math.max(
+        0,
+        (order.finalAmount || 0) - (order.paidAmount || 0)
+      );
+      orderCount += 1;
+    });
+
+    // Convert to arrays and sort
+    const initialPayments = Object.values(initialPaymentByMethod)
+      .filter((item) => item.totalPaidAmount > 0)
+      .sort((a, b) => b.totalPaidAmount - a.totalPaidAmount);
+
+    const creditPayments = Object.values(creditPaymentByMethod)
+      .filter((item) => item.totalPaidAmount > 0)
+      .sort((a, b) => b.totalPaidAmount - a.totalPaidAmount);
+
+    // Get date range info
+    const { startDate, endDate } = req.query;
+    const dateRange = {
+      startDate: parsedStartDate || (startDate ? new Date(startDate) : null),
+      endDate: parsedEndDate || (endDate ? new Date(endDate) : null),
+    };
+
+    res.status(200).json({
+      success: true,
+      message: "Credit sale report fetched successfully",
+      data: {
+        storefront: {
+          _id: storefront._id,
+          locationName: storefront.locationName,
+          locationCode: storefront.locationCode,
+        },
+        dateRange,
+        totals: {
+          totalFinalAmount,
+          totalPaidAmount,
+          totalInitialPaidAmount,
+          totalCreditPaidAmount,
+          totalRemainingBalance,
+          orderCount,
+          creditRecordCount: creditRecords.length,
+        },
+        initialPayments: initialPayments,
+        creditPayments: creditPayments,
       },
     });
   }
