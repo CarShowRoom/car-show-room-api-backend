@@ -120,8 +120,11 @@ export const getAllWarehouseStock = asyncErrorHandler(
 
     // Execute query with population
     const stock = await WarehouseStock.find(query)
-      .populate("inventoryId", "productName productCode SKU category")
-      .populate("warehouseId", "locationName locationCode")
+      .populate(
+        "inventoryId",
+        "productName productCode SKU category buyingPrice sellingPrice"
+      )
+      .populate("warehouseId", "locationName locationCode locationAddress")
       .sort(sort)
       .skip(skip)
       .limit(limitNum);

@@ -2,6 +2,7 @@ import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import Expense from "../models/expense.model.js";
 import mongoose from "mongoose";
+import { createDateFilter } from "../utils/dateFilter.utils.js";
 
 export const createExpense = asyncErrorHandler(async (req, res, next) => {
   const { category, amount, date, notes } = req.body;
@@ -54,7 +55,24 @@ export const getExpenseById = asyncErrorHandler(async (req, res, next) => {
 });
 
 export const getExpenses = asyncErrorHandler(async (req, res, next) => {
-  const expenses = await Expense.find()
+  // Build query filter
+  const filter = {};
+
+  // Add date range filter using dateFilter utility
+  // Filter by the 'date' field (expense date) rather than createdAt
+  try {
+    const dateFilter = createDateFilter(req.query, "date", false);
+    Object.assign(filter, dateFilter);
+  } catch (error) {
+    // If it's a CustomError, pass it to error handler
+    if (error instanceof CustomError) {
+      return next(error);
+    }
+    // For other errors, wrap and pass
+    return next(new CustomError(400, error.message || "Invalid date filter"));
+  }
+
+  const expenses = await Expense.find(filter)
     .populate({
       path: "locationId",
       select: "type locationName locationCode locationAddress",

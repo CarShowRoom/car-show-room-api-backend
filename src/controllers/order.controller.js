@@ -6,6 +6,7 @@ import Inventory from "../models/inventory.model.js";
 import CreditPerson from "../models/creditPersona.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
+import { createDateFilter } from "../utils/dateFilter.utils.js";
 
 // Create new order with ACID properties and stock deduction
 export const createOrder = asyncErrorHandler(async (req, res, next) => {
@@ -363,9 +364,29 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
 });
 
 export const getAllOrders = asyncErrorHandler(async (req, res, next) => {
-  const orders = await Order.find({ isDeleted: false })
+  // Build query filter
+  const filter = {
+    isDeleted: false,
+  };
+
+  // Add date range filter using dateFilter utility
+  try {
+    const dateFilter = createDateFilter(req.query, "createdAt", false);
+    Object.assign(filter, dateFilter);
+  } catch (error) {
+    // If it's a CustomError, pass it to error handler
+    if (error instanceof CustomError) {
+      return next(error);
+    }
+    // For other errors, wrap and pass
+    return next(new CustomError(400, error.message || "Invalid date filter"));
+  }
+
+  const orders = await Order.find(filter)
     .populate("storefrontId", "locationName locationCode")
-    .populate("ordersProducts.inventoryId", "productName productCode SKU");
+    .populate("ordersProducts.inventoryId", "productName productCode SKU")
+    .populate("creditPersonId", "name phone")
+    .populate("soldBy", "name role");
 
   res.status(200).json({
     success: true,
@@ -381,7 +402,9 @@ export const getOrders = asyncErrorHandler(async (req, res, next) => {
   }
   const order = await Order.findOne({ _id: orderId, isDeleted: false })
     .populate("storefrontId", "locationName locationCode")
-    .populate("ordersProducts.inventoryId", "productName productCode SKU");
+    .populate("ordersProducts.inventoryId", "productName productCode SKU")
+    .populate("creditPersonId", "name phone")
+    .populate("soldBy", "name role");
 
   if (!order) {
     return next(new CustomError(404, "Order not found"));
@@ -522,7 +545,9 @@ export const getOrdersByStorefrontId = asyncErrorHandler(
     })
       .sort({ createdAt: -1 }) // Sort by newest first
       .populate("storefrontId", "locationName locationCode")
-      .populate("ordersProducts.inventoryId", "productName productCode SKU");
+      .populate("ordersProducts.inventoryId", "productName productCode SKU")
+      .populate("creditPersonId", "name phone")
+      .populate("soldBy", "name role");
 
     res.status(200).json({
       success: true,

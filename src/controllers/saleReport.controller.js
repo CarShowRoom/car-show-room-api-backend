@@ -435,3 +435,168 @@ export const getCreditSaleReportByStorefrontId = asyncErrorHandler(
     });
   }
 );
+
+// Get product/stock sales statistics for a specific storefront
+export const getProductSalesReportByStorefrontId = asyncErrorHandler(
+  async (req, res, next) => {
+    const { storefrontId } = req.params;
+
+    // Validate storefrontId
+    if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
+      return next(new CustomError(400, "Invalid storefront ID format"));
+    }
+
+    // Validate storefront exists
+    const storefront = await LocationProfile.findOne({
+      _id: storefrontId,
+      type: "storefront",
+      isDeleted: false,
+    });
+
+    if (!storefront) {
+      return next(new CustomError(404, "Storefront not found"));
+    }
+
+    // Build query filter
+    const filter = {
+      storefrontId: new mongoose.Types.ObjectId(storefrontId),
+      isDeleted: false,
+      orderStatus: "completed", // Only include completed orders
+    };
+
+    // Add date range filter using dateFilter utility
+    let parsedStartDate = null;
+    let parsedEndDate = null;
+    try {
+      const dateFilter = createDateFilter(req.query, "createdAt", false);
+      Object.assign(filter, dateFilter);
+
+      // Extract parsed dates from the filter for response
+      if (dateFilter.createdAt) {
+        if (dateFilter.createdAt.$gte) {
+          parsedStartDate = dateFilter.createdAt.$gte;
+        }
+        if (dateFilter.createdAt.$lte) {
+          parsedEndDate = dateFilter.createdAt.$lte;
+        }
+      }
+    } catch (error) {
+      // If it's a CustomError, pass it to error handler
+      if (error instanceof CustomError) {
+        return next(error);
+      }
+      // For other errors, wrap and pass
+      return next(new CustomError(400, error.message || "Invalid date filter"));
+    }
+
+    // Aggregate product sales statistics
+    const productSalesReport = await Order.aggregate([
+      { $match: filter },
+      // Unwind the ordersProducts array to get individual products
+      { $unwind: "$ordersProducts" },
+      // Group by inventoryId to aggregate statistics
+      {
+        $group: {
+          _id: "$ordersProducts.inventoryId",
+          totalQuantity: { $sum: "$ordersProducts.quantity" },
+          totalRevenue: {
+            $sum: {
+              $multiply: ["$ordersProducts.quantity", "$ordersProducts.unitPrice"],
+            },
+          },
+          orderCount: { $addToSet: "$_id" }, // Count unique orders
+          averageUnitPrice: { $avg: "$ordersProducts.unitPrice" },
+          minUnitPrice: { $min: "$ordersProducts.unitPrice" },
+          maxUnitPrice: { $max: "$ordersProducts.unitPrice" },
+        },
+      },
+      // Calculate orderCount as array length
+      {
+        $addFields: {
+          orderCount: { $size: "$orderCount" },
+        },
+      },
+      // Sort by total quantity descending
+      {
+        $sort: { totalQuantity: -1 },
+      },
+      // Lookup inventory details
+      {
+        $lookup: {
+          from: "inventories",
+          localField: "_id",
+          foreignField: "_id",
+          as: "inventory",
+        },
+      },
+      // Unwind inventory array (should be single item)
+      {
+        $unwind: {
+          path: "$inventory",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      // Project final structure
+      {
+        $project: {
+          _id: 0,
+          inventoryId: "$_id",
+          productName: "$inventory.productName",
+          productCode: "$inventory.productCode",
+          SKU: "$inventory.SKU",
+          category: "$inventory.category",
+          subCategory: "$inventory.subCategory",
+          brand: "$inventory.brand",
+          unitOfMeasure: "$inventory.unitOfMeasure",
+          totalQuantity: 1,
+          totalRevenue: 1,
+          orderCount: 1,
+          averageUnitPrice: { $round: ["$averageUnitPrice", 2] },
+          minUnitPrice: 1,
+          maxUnitPrice: 1,
+        },
+      },
+    ]);
+
+    // Calculate totals across all products
+    const totals = productSalesReport.reduce(
+      (acc, item) => {
+        acc.totalQuantity += item.totalQuantity;
+        acc.totalRevenue += item.totalRevenue;
+        acc.totalUniqueProducts += 1;
+        return acc;
+      },
+      {
+        totalQuantity: 0,
+        totalRevenue: 0,
+        totalUniqueProducts: 0,
+      }
+    );
+
+    // Get date range info
+    const { startDate, endDate } = req.query;
+    const dateRange = {
+      startDate: parsedStartDate || (startDate ? new Date(startDate) : null),
+      endDate: parsedEndDate || (endDate ? new Date(endDate) : null),
+    };
+
+    res.status(200).json({
+      success: true,
+      message: "Product sales report fetched successfully",
+      data: {
+        storefront: {
+          _id: storefront._id,
+          locationName: storefront.locationName,
+          locationCode: storefront.locationCode,
+        },
+        dateRange,
+        totals: {
+          totalQuantity: totals.totalQuantity,
+          totalRevenue: totals.totalRevenue,
+          totalUniqueProducts: totals.totalUniqueProducts,
+        },
+        products: productSalesReport,
+      },
+    });
+  }
+);

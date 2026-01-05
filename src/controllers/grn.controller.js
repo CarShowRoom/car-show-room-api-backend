@@ -4,6 +4,7 @@ import Purchasing from "../models/purchasing.model.js";
 import Inventory from "../models/inventory.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
+import { createDateFilter } from "../utils/dateFilter.utils.js";
 
 // Create new GRN (Fully Automatic - Auto-creates line items from PO products)
 export const createGRN = asyncErrorHandler(async (req, res, next) => {
@@ -293,6 +294,20 @@ export const getAllGRN = asyncErrorHandler(async (req, res, next) => {
       { grnNumber: { $regex: search, $options: "i" } },
       { notes: { $regex: search, $options: "i" } },
     ];
+  }
+
+  // Add date range filter using dateFilter utility
+  // Filter by the 'grnDate' field (when the GRN was created/received)
+  try {
+    const dateFilter = createDateFilter(req.query, "grnDate", false);
+    Object.assign(query, dateFilter);
+  } catch (error) {
+    // If it's a CustomError, pass it to error handler
+    if (error instanceof CustomError) {
+      return next(error);
+    }
+    // For other errors, wrap and pass
+    return next(new CustomError(400, error.message || "Invalid date filter"));
   }
 
   // Pagination

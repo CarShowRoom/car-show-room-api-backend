@@ -3,6 +3,7 @@ import {
   getSaleReportByStorefrontId,
   getPaymentMethodReportByStorefrontId,
   getCreditSaleReportByStorefrontId,
+  getProductSalesReportByStorefrontId,
 } from "../controllers/saleReport.controller.js";
 
 const router = express.Router();
@@ -23,6 +24,12 @@ router.get(
 router.get(
   "/sale-report/storefront/:storefrontId/credit-orders",
   getCreditSaleReportByStorefrontId
+);
+
+// Product/stock sales statistics report
+router.get(
+  "/sale-report/storefront/:storefrontId/products",
+  getProductSalesReportByStorefrontId
 );
 
 export default router;

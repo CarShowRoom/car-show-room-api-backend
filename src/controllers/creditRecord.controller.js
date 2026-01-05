@@ -3,6 +3,7 @@ import CreditRecord from "../models/creditRecord.model.js";
 import Order from "../models/orders.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
+import { createDateFilter } from "../utils/dateFilter.utils.js";
 
 // Create credit record payment (for partial/full payment on credit orders)
 export const createCreditPayment = asyncErrorHandler(async (req, res, next) => {
@@ -225,6 +226,20 @@ export const getAllCreditRecords = asyncErrorHandler(async (req, res, next) => {
       return next(new CustomError(400, "Invalid order ID format"));
     }
     query.orderId = orderId;
+  }
+
+  // Add date range filter using dateFilter utility
+  // Filter by the 'paymentDate' field (when the payment was made)
+  try {
+    const dateFilter = createDateFilter(req.query, "paymentDate", false);
+    Object.assign(query, dateFilter);
+  } catch (error) {
+    // If it's a CustomError, pass it to error handler
+    if (error instanceof CustomError) {
+      return next(error);
+    }
+    // For other errors, wrap and pass
+    return next(new CustomError(400, error.message || "Invalid date filter"));
   }
 
   // Pagination
