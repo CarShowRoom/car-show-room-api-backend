@@ -87,3 +87,41 @@ export const getExpenses = asyncErrorHandler(async (req, res, next) => {
     data: expenses,
   });
 });
+
+export const updateExpense = asyncErrorHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const { category, amount, date, notes } = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return next(new CustomError(400, "Invalid expense ID format"));
+  }
+
+  // Get adminId from authenticated user
+  const adminId = req.user._id;
+  if (!mongoose.Types.ObjectId.isValid(adminId)) {
+    return next(new CustomError(400, "Invalid admin ID format"));
+  }
+
+  const expense = await Expense.findByIdAndUpdate(
+    id,
+    { category, amount, date, notes, adminId },
+    { new: true, runValidators: true }
+  )
+    .populate({
+      path: "locationId",
+      select: "type locationName locationCode locationAddress",
+    })
+    .populate({
+      path: "adminId",
+      select: "name role",
+    });
+
+  if (!expense) {
+    return next(new CustomError(404, "Expense not found"));
+  }
+  res.status(200).json({
+    success: true,
+    message: "Expense updated successfully.",
+    data: expense,
+  });
+});

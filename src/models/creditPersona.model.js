@@ -9,7 +9,6 @@ const creditPersonSchema = new mongoose.Schema(
     phone: {
       type: String,
     },
-
     blacklist: {
       type: Boolean,
       default: false,

@@ -165,3 +165,138 @@ export const getStorefrontProfileById = asyncErrorHandler(
     });
   }
 );
+
+// Update storefront profile
+export const updateStorefrontProfile = asyncErrorHandler(
+  async (req, res, next) => {
+    const { id } = req.params;
+    const {
+      storefrontCode,
+      storefrontName,
+      storefrontAddress,
+      storefrontPhone,
+      storefrontEmail,
+      managerName,
+      status,
+      description,
+      notes,
+    } = req.body;
+
+    // Validate MongoDB ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(new CustomError(400, "Invalid storefront profile ID format"));
+    }
+
+    // Check if storefront exists and is not deleted
+    const existingStorefront = await LocationProfile.findOne({
+      _id: id,
+      type: "storefront",
+      isDeleted: false,
+    });
+
+    if (!existingStorefront) {
+      return next(new CustomError(404, "Storefront profile not found"));
+    }
+
+    // Build update fields object
+    const updateFields = {};
+
+    // Check if storefrontCode is being updated and validate uniqueness
+    if (storefrontCode !== undefined) {
+      const codeToCheck = storefrontCode.toUpperCase().trim();
+      if (codeToCheck !== existingStorefront.locationCode) {
+        const existingCode = await LocationProfile.findOne({
+          type: "storefront",
+          locationCode: codeToCheck,
+          isDeleted: false,
+          _id: { $ne: id },
+        });
+        if (existingCode) {
+          return next(new CustomError(400, "Storefront code already exists"));
+        }
+      }
+      updateFields.locationCode = codeToCheck;
+    }
+
+    // Check if storefrontName is being updated and validate uniqueness
+    if (storefrontName !== undefined) {
+      const nameToCheck = storefrontName.trim();
+      if (nameToCheck !== existingStorefront.locationName) {
+        const existingName = await LocationProfile.findOne({
+          type: "storefront",
+          locationName: nameToCheck,
+          isDeleted: false,
+          _id: { $ne: id },
+        });
+        if (existingName) {
+          return next(new CustomError(400, "Storefront name already exists"));
+        }
+      }
+      updateFields.locationName = nameToCheck;
+    }
+
+    // Update address if provided
+    if (storefrontAddress !== undefined) {
+      updateFields.locationAddress = storefrontAddress.trim();
+    }
+
+    // Validate and update phone number if provided
+    if (storefrontPhone !== undefined) {
+      const phoneValidation = validatePhoneNumber(storefrontPhone, "MM");
+      if (!phoneValidation.isValid) {
+        return next(new CustomError(400, phoneValidation.error));
+      }
+      updateFields.locationPhone = phoneValidation.formattedNumber;
+    }
+
+    // Update email if provided
+    if (storefrontEmail !== undefined) {
+      updateFields.locationEmail = storefrontEmail
+        ? storefrontEmail.toLowerCase().trim()
+        : null;
+    }
+
+    // Update manager name if provided
+    if (managerName !== undefined) {
+      updateFields.managerName = managerName ? managerName.trim() : null;
+    }
+
+    // Update status if provided
+    if (status !== undefined) {
+      if (!["active", "inactive"].includes(status)) {
+        return next(
+          new CustomError(400, "Status must be either 'active' or 'inactive'")
+        );
+      }
+      updateFields.status = status;
+    }
+
+    // Update description if provided
+    if (description !== undefined) {
+      updateFields.description = description.trim();
+    }
+
+    // Update notes if provided
+    if (notes !== undefined) {
+      updateFields.notes = notes.trim();
+    }
+
+    // Check if there are any fields to update
+    if (Object.keys(updateFields).length === 0) {
+      return next(new CustomError(400, "No valid fields to update"));
+    }
+
+    // Update the storefront profile
+    const updatedStorefront = await LocationProfile.findByIdAndUpdate(
+      id,
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Storefront profile updated successfully",
+      data: updatedStorefront,
+    });
+  }
+);

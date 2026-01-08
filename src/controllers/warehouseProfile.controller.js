@@ -165,3 +165,138 @@ export const getWarehouseProfileById = asyncErrorHandler(
     });
   }
 );
+
+// Update warehouse profile
+export const updateWarehouseProfile = asyncErrorHandler(
+  async (req, res, next) => {
+    const { id } = req.params;
+    const {
+      warehouseCode,
+      warehouseName,
+      warehouseAddress,
+      warehousePhone,
+      warehouseEmail,
+      managerName,
+      status,
+      description,
+      notes,
+    } = req.body;
+
+    // Validate MongoDB ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(new CustomError(400, "Invalid warehouse profile ID format"));
+    }
+
+    // Check if warehouse exists and is not deleted
+    const existingWarehouse = await LocationProfile.findOne({
+      _id: id,
+      type: "warehouse",
+      isDeleted: false,
+    });
+
+    if (!existingWarehouse) {
+      return next(new CustomError(404, "Warehouse profile not found"));
+    }
+
+    // Build update fields object
+    const updateFields = {};
+
+    // Check if warehouseCode is being updated and validate uniqueness
+    if (warehouseCode !== undefined) {
+      const codeToCheck = warehouseCode.toUpperCase().trim();
+      if (codeToCheck !== existingWarehouse.locationCode) {
+        const existingCode = await LocationProfile.findOne({
+          type: "warehouse",
+          locationCode: codeToCheck,
+          isDeleted: false,
+          _id: { $ne: id },
+        });
+        if (existingCode) {
+          return next(new CustomError(400, "Warehouse code already exists"));
+        }
+      }
+      updateFields.locationCode = codeToCheck;
+    }
+
+    // Check if warehouseName is being updated and validate uniqueness
+    if (warehouseName !== undefined) {
+      const nameToCheck = warehouseName.trim();
+      if (nameToCheck !== existingWarehouse.locationName) {
+        const existingName = await LocationProfile.findOne({
+          type: "warehouse",
+          locationName: nameToCheck,
+          isDeleted: false,
+          _id: { $ne: id },
+        });
+        if (existingName) {
+          return next(new CustomError(400, "Warehouse name already exists"));
+        }
+      }
+      updateFields.locationName = nameToCheck;
+    }
+
+    // Update address if provided
+    if (warehouseAddress !== undefined) {
+      updateFields.locationAddress = warehouseAddress.trim();
+    }
+
+    // Validate and update phone number if provided
+    if (warehousePhone !== undefined) {
+      const phoneValidation = validatePhoneNumber(warehousePhone, "MM");
+      if (!phoneValidation.isValid) {
+        return next(new CustomError(400, phoneValidation.error));
+      }
+      updateFields.locationPhone = phoneValidation.formattedNumber;
+    }
+
+    // Update email if provided
+    if (warehouseEmail !== undefined) {
+      updateFields.locationEmail = warehouseEmail
+        ? warehouseEmail.toLowerCase().trim()
+        : null;
+    }
+
+    // Update manager name if provided
+    if (managerName !== undefined) {
+      updateFields.managerName = managerName ? managerName.trim() : null;
+    }
+
+    // Update status if provided
+    if (status !== undefined) {
+      if (!["active", "inactive"].includes(status)) {
+        return next(
+          new CustomError(400, "Status must be either 'active' or 'inactive'")
+        );
+      }
+      updateFields.status = status;
+    }
+
+    // Update description if provided
+    if (description !== undefined) {
+      updateFields.description = description.trim();
+    }
+
+    // Update notes if provided
+    if (notes !== undefined) {
+      updateFields.notes = notes.trim();
+    }
+
+    // Check if there are any fields to update
+    if (Object.keys(updateFields).length === 0) {
+      return next(new CustomError(400, "No valid fields to update"));
+    }
+
+    // Update the warehouse profile
+    const updatedWarehouse = await LocationProfile.findByIdAndUpdate(
+      id,
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Warehouse profile updated successfully",
+      data: updatedWarehouse,
+    });
+  }
+);

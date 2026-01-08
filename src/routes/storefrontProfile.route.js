@@ -3,6 +3,7 @@ import {
   createStorefrontProfile,
   getAllStorefrontProfiles,
   getStorefrontProfileById,
+  updateStorefrontProfile,
 } from "../controllers/storefrontProfile.controller.js";
 
 const router = express.Router();
@@ -15,6 +16,9 @@ router.get("/storefront-profile", getAllStorefrontProfiles);
 
 // Get storefront profile by ID
 router.get("/storefront-profile/:id", getStorefrontProfileById);
+
+// Update storefront profile
+router.patch("/storefront-profile/:id", updateStorefrontProfile);
 
 export default router;
 
