@@ -114,15 +114,24 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     return next(new CustomError(400, "Paid amount cannot be negative"));
   }
 
-  // Generate order number before transaction
-  const orderNumber = await Order.generateOrderNumber();
-
   // Start MongoDB session for transaction
   const session = await mongoose.startSession();
 
-  try {
-    // Start transaction
-    await session.withTransaction(async () => {
+  // Retry logic for handling duplicate order numbers
+  const maxRetries = 3;
+  let retryCount = 0;
+  let orderNumber;
+  let orderCreated = false;
+  let newOrder;
+  let lastError = null;
+
+  while (retryCount < maxRetries && !orderCreated) {
+    try {
+      // Generate order number (before transaction to allow retry)
+      orderNumber = await Order.generateOrderNumber();
+
+      // Start transaction
+      await session.withTransaction(async () => {
       // 1. Validate storefront exists and is not deleted
       const storefront = await LocationProfile.findOne({
         _id: storefrontId,
@@ -313,54 +322,114 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
         soldBy,
       };
 
-      const newOrderArray = await Order.create([orderData], { session });
-      const newOrder = newOrderArray[0];
+        const newOrderArray = await Order.create([orderData], { session });
+        newOrder = newOrderArray[0];
 
-      // 7. Populate references for response (inside transaction for consistency)
-      await newOrder.populate("storefrontId", "locationName locationCode");
-      await newOrder.populate(
-        "ordersProducts.inventoryId",
-        "productName productCode SKU"
-      );
+        // 7. Populate references for response (inside transaction for consistency)
+        await newOrder.populate("storefrontId", "locationName locationCode");
+        await newOrder.populate(
+          "ordersProducts.inventoryId",
+          "productName productCode SKU"
+        );
 
-      // 8. Send response
+        // Mark as created successfully
+        orderCreated = true;
+      });
+
+      // If we reach here, order was created successfully
+      // Send response outside the transaction
       res.status(201).json({
         success: true,
         message: "Order created successfully",
         data: newOrder,
       });
-    });
-  } catch (error) {
-    // Handle transaction errors
-    // If it's a CustomError, pass it to error handler
-    if (error instanceof CustomError) {
-      return next(error);
-    }
+      return; // Exit the retry loop
+    } catch (error) {
+      // Handle transaction errors
+      // If it's a CustomError (validation errors, etc.), pass it to error handler
+      if (error instanceof CustomError) {
+        return next(error);
+      }
 
-    // Handle MongoDB duplicate key errors
-    if (error.code === 11000) {
-      return next(
-        new CustomError(400, "Order number already exists. Please try again.")
-      );
-    }
+      // Handle MongoDB duplicate key errors - retry with new order number
+      if (error.code === 11000) {
+        retryCount++;
+        if (retryCount < maxRetries) {
+          // Wait a bit before retrying (exponential backoff)
+          await new Promise((resolve) =>
+            setTimeout(resolve, 100 * retryCount)
+          );
+          // Continue to next iteration of retry loop
+          continue;
+        } else {
+          // Max retries reached
+          return next(
+            new CustomError(
+              500,
+              "Failed to generate unique order number after multiple attempts. Please try again."
+            )
+          );
+        }
+      }
 
+      // For other errors, store error and break out of retry loop
+      lastError = error;
+      break;
+    }
+  }
+
+  // If we exit the loop without creating order, handle the error
+  if (!orderCreated) {
     // Handle validation errors
-    if (error.name === "ValidationError") {
-      const errors = Object.values(error.errors).map((val) => val.message);
+    if (!lastError) {
+      lastError = new Error("Order creation failed after retries");
+    }
+    if (lastError.name === "ValidationError") {
+      const errors = Object.values(lastError.errors).map((val) => val.message);
       return next(
         new CustomError(400, `Validation error: ${errors.join(". ")}`)
       );
     }
 
     // For other errors, log and return with actual error message
-    console.error("Order creation error:", error);
+    console.error("Order creation error:", lastError);
     const errorMessage =
-      error?.message || String(error) || "Unknown error occurred";
-    return next(new CustomError(500, `Order creation failed: ${errorMessage}`));
-  } finally {
-    // Always end the session
-    await session.endSession();
+      lastError?.message || String(lastError) || "Unknown error occurred";
+    return next(
+      new CustomError(500, `Order creation failed: ${errorMessage}`)
+    );
   }
+} catch (error) {
+  // Handle any errors that escape the retry loop
+  // If it's a CustomError, pass it to error handler
+  if (error instanceof CustomError) {
+    return next(error);
+  }
+
+  // Handle validation errors
+  if (error.name === "ValidationError") {
+    const errors = Object.values(error.errors).map((val) => val.message);
+    return next(
+      new CustomError(400, `Validation error: ${errors.join(". ")}`)
+    );
+  }
+
+  // Handle MongoDB duplicate key errors (shouldn't reach here with retry logic, but just in case)
+  if (error.code === 11000) {
+    return next(
+      new CustomError(400, "Order number already exists. Please try again.")
+    );
+  }
+
+  // For other errors, log and return with actual error message
+  console.error("Order creation error:", error);
+  const errorMessage =
+    error?.message || String(error) || "Unknown error occurred";
+  return next(new CustomError(500, `Order creation failed: ${errorMessage}`));
+} finally {
+  // Always end the session
+  await session.endSession();
+}
 });
 
 export const getAllOrders = asyncErrorHandler(async (req, res, next) => {

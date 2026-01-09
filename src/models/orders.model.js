@@ -169,11 +169,16 @@ orderSchema.virtual("remainingBalance").get(function () {
 });
 
 // Static method to generate order number
+// Format: ORD-YYYY-MM-DD-NNNNNN (e.g., ORD-2024-01-15-000001)
+// This format supports up to 999,999 orders per day
 orderSchema.statics.generateOrderNumber = async function () {
-  const year = new Date().getFullYear();
-  const prefix = `ORD-${year}-`;
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const prefix = `ORD-${year}-${month}-${day}-`;
 
-  // Find the latest order for this year (excluding deleted)
+  // Find the latest order for this date (excluding deleted)
   const latestOrder = await this.findOne({
     orderNumber: new RegExp(
       `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`
@@ -185,18 +190,26 @@ orderSchema.statics.generateOrderNumber = async function () {
 
   let sequence = 1;
   if (latestOrder && latestOrder.orderNumber) {
-    // Extract sequence number from format: ORD-YYYY-NNNN
+    // Extract sequence number from format: ORD-YYYY-MM-DD-NNNNNN
     const parts = latestOrder.orderNumber.split("-");
-    if (parts.length === 3) {
-      const latestSequence = parseInt(parts[2], 10);
+    if (parts.length === 5) {
+      // Format: ["ORD", "YYYY", "MM", "DD", "NNNNNN"]
+      const latestSequence = parseInt(parts[4], 10);
       if (!isNaN(latestSequence)) {
         sequence = latestSequence + 1;
       }
     }
   }
 
-  // Format: ORD-YYYY-NNNN (e.g., ORD-2024-0001)
-  return `${prefix}${sequence.toString().padStart(4, "0")}`;
+  // Validate sequence doesn't exceed daily limit
+  if (sequence > 999999) {
+    throw new Error(
+      `Daily order limit reached. Maximum 999,999 orders per day allowed.`
+    );
+  }
+
+  // Format: ORD-YYYY-MM-DD-NNNNNN (e.g., ORD-2024-01-15-000001)
+  return `${prefix}${sequence.toString().padStart(6, "0")}`;
 };
 
 // Indexes for better query performance
@@ -208,6 +221,10 @@ orderSchema.index({ storefrontId: 1, isDeleted: 1 }); // Compound index for comm
 orderSchema.index({ orderStatus: 1 }); // For status filtering
 orderSchema.index({ creditPersonId: 1 }); // For credit person queries
 orderSchema.index({ paymentType: 1 }); // For filtering by payment type
+
+// Performance indexes for orderNumber queries (used in generateOrderNumber)
+orderSchema.index({ orderNumber: 1, isDeleted: 1 }); // For finding latest order by date prefix
+orderSchema.index({ orderNumber: 1, createdAt: -1 }); // For sorting by orderNumber and date
 
 const Order = mongoose.model("Order", orderSchema);
 
