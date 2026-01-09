@@ -22,8 +22,8 @@ export const createCreditPayment = asyncErrorHandler(async (req, res, next) => {
     return next(new CustomError(400, "Paid amount is required"));
   }
 
-  if (paidAmount <= 0) {
-    return next(new CustomError(400, "Paid amount must be greater than 0"));
+  if (paidAmount === 0) {
+    return next(new CustomError(400, "Paid amount cannot be zero"));
   }
 
   // Start MongoDB session for transaction
@@ -61,12 +61,24 @@ export const createCreditPayment = asyncErrorHandler(async (req, res, next) => {
         order.finalAmount - totalPaidSoFar
       );
 
-      // 4. Validate payment doesn't exceed remaining balance
-      if (paidAmount > currentRemainingBalance) {
-        throw new CustomError(
-          400,
-          `Payment amount (${paidAmount}) exceeds remaining balance (${currentRemainingBalance}). Maximum payment allowed: ${currentRemainingBalance}`
-        );
+      // 4. Validate payment amount based on sign
+      if (paidAmount > 0) {
+        // For positive amounts: validate payment doesn't exceed remaining balance
+        if (paidAmount > currentRemainingBalance) {
+          throw new CustomError(
+            400,
+            `Payment amount (${paidAmount}) exceeds remaining balance (${currentRemainingBalance}). Maximum payment allowed: ${currentRemainingBalance}`
+          );
+        }
+      } else {
+        // For negative amounts: validate that order.paidAmount won't go below 0
+        const newPaidAmount = totalPaidSoFar + paidAmount;
+        if (newPaidAmount < 0) {
+          throw new CustomError(
+            400,
+            `Correction amount (${paidAmount}) would result in negative paid amount. Current paid amount: ${totalPaidSoFar}. Maximum correction allowed: ${-totalPaidSoFar}`
+          );
+        }
       }
 
       // 5. Create credit record payment

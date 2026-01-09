@@ -15,7 +15,6 @@ const creditRecordSchema = new mongoose.Schema(
     paidAmount: {
       type: Number,
       required: [true, "Paid amount is required"],
-      min: [0, "Paid amount cannot be negative"],
     },
     paymentDate: {
       type: Date,
