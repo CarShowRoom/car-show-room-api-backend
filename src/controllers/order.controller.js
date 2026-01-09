@@ -125,311 +125,318 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
   let newOrder;
   let lastError = null;
 
-  while (retryCount < maxRetries && !orderCreated) {
-    try {
-      // Generate order number (before transaction to allow retry)
-      orderNumber = await Order.generateOrderNumber();
+  try {
+    while (retryCount < maxRetries && !orderCreated) {
+      try {
+        // Generate order number (before transaction to allow retry)
+        orderNumber = await Order.generateOrderNumber();
 
-      // Start transaction
-      await session.withTransaction(async () => {
-      // 1. Validate storefront exists and is not deleted
-      const storefront = await LocationProfile.findOne({
-        _id: storefrontId,
-        type: "storefront",
-      }).session(session);
+        // Start transaction
+        await session.withTransaction(async () => {
+          // 1. Validate storefront exists and is not deleted
+          const storefront = await LocationProfile.findOne({
+            _id: storefrontId,
+            type: "storefront",
+          }).session(session);
 
-      if (!storefront) {
-        throw new CustomError(404, "Storefront not found");
-      }
+          if (!storefront) {
+            throw new CustomError(404, "Storefront not found");
+          }
 
-      if (storefront.isDeleted) {
-        throw new CustomError(
-          400,
-          "Cannot create order for deleted storefront"
-        );
-      }
+          if (storefront.isDeleted) {
+            throw new CustomError(
+              400,
+              "Cannot create order for deleted storefront"
+            );
+          }
 
-      // 1a. Validate credit person exists if creditPersonId is provided
-      let creditPerson = null;
-      if (creditPersonId) {
-        creditPerson = await CreditPerson.findById(creditPersonId).session(
-          session
-        );
+          // 1a. Validate credit person exists if creditPersonId is provided
+          let creditPerson = null;
+          if (creditPersonId) {
+            creditPerson = await CreditPerson.findById(creditPersonId).session(
+              session
+            );
 
-        if (!creditPerson) {
-          throw new CustomError(404, "Credit person not found");
-        }
+            if (!creditPerson) {
+              throw new CustomError(404, "Credit person not found");
+            }
 
-        // Check if credit person is blacklisted
-        if (creditPerson.blacklist) {
-          throw new CustomError(
-            400,
-            `Cannot create order for blacklisted credit person: ${
-              creditPerson.blacklistReason || "No reason provided"
-            }`
+            // Check if credit person is blacklisted
+            if (creditPerson.blacklist) {
+              throw new CustomError(
+                400,
+                `Cannot create order for blacklisted credit person: ${
+                  creditPerson.blacklistReason || "No reason provided"
+                }`
+              );
+            }
+          }
+
+          // 2. Validate all inventory items exist and get their selling prices
+          const inventoryIds = ordersProducts.map(
+            (p) => new mongoose.Types.ObjectId(p.inventoryId)
           );
-        }
-      }
 
-      // 2. Validate all inventory items exist and get their selling prices
-      const inventoryIds = ordersProducts.map(
-        (p) => new mongoose.Types.ObjectId(p.inventoryId)
-      );
+          const inventoryItems = await Inventory.find({
+            _id: { $in: inventoryIds },
+          }).session(session);
 
-      const inventoryItems = await Inventory.find({
-        _id: { $in: inventoryIds },
-      }).session(session);
+          if (inventoryItems.length !== inventoryIds.length) {
+            const foundIds = inventoryItems.map((item) => item._id.toString());
+            const missingIds = inventoryIds.filter(
+              (id) => !foundIds.includes(id.toString())
+            );
+            throw new CustomError(
+              404,
+              `Inventory items not found: ${missingIds.join(", ")}`
+            );
+          }
 
-      if (inventoryItems.length !== inventoryIds.length) {
-        const foundIds = inventoryItems.map((item) => item._id.toString());
-        const missingIds = inventoryIds.filter(
-          (id) => !foundIds.includes(id.toString())
-        );
-        throw new CustomError(
-          404,
-          `Inventory items not found: ${missingIds.join(", ")}`
-        );
-      }
+          // Map inventory items by ID for easy lookup
+          const inventoryMap = new Map();
+          inventoryItems.forEach((item) => {
+            inventoryMap.set(item._id.toString(), item);
+          });
 
-      // Map inventory items by ID for easy lookup
-      const inventoryMap = new Map();
-      inventoryItems.forEach((item) => {
-        inventoryMap.set(item._id.toString(), item);
-      });
+          // 3. Prepare order products with unitPrice from current sellingPrice (snapshot)
+          const validatedProducts = [];
+          let calculatedSubTotal = 0;
 
-      // 3. Prepare order products with unitPrice from current sellingPrice (snapshot)
-      const validatedProducts = [];
-      let calculatedSubTotal = 0;
+          for (const product of ordersProducts) {
+            const inventoryId = new mongoose.Types.ObjectId(
+              product.inventoryId
+            );
+            const inventoryItem = inventoryMap.get(inventoryId.toString());
 
-      for (const product of ordersProducts) {
-        const inventoryId = new mongoose.Types.ObjectId(product.inventoryId);
-        const inventoryItem = inventoryMap.get(inventoryId.toString());
+            if (!inventoryItem) {
+              throw new CustomError(
+                404,
+                `Inventory item not found: ${product.inventoryId}`
+              );
+            }
 
-        if (!inventoryItem) {
-          throw new CustomError(
-            404,
-            `Inventory item not found: ${product.inventoryId}`
+            if (
+              inventoryItem.sellingPrice === undefined ||
+              inventoryItem.sellingPrice === null
+            ) {
+              throw new CustomError(
+                400,
+                `Product '${inventoryItem.productCode}' (${inventoryItem.productName}) does not have a selling price set`
+              );
+            }
+
+            if (inventoryItem.sellingPrice < 0) {
+              throw new CustomError(
+                400,
+                `Product '${inventoryItem.productCode}' (${inventoryItem.productName}) has an invalid selling price: ${inventoryItem.sellingPrice}`
+              );
+            }
+
+            // Store current sellingPrice as snapshot unitPrice in order
+            const unitPrice = inventoryItem.sellingPrice;
+            const productSubTotal = product.quantity * unitPrice;
+            calculatedSubTotal += productSubTotal;
+
+            validatedProducts.push({
+              inventoryId,
+              quantity: product.quantity,
+              unitPrice, // Snapshot of current selling price
+            });
+          }
+
+          // Use provided subTotal or calculated one
+          const finalSubTotal =
+            subTotal !== undefined && subTotal !== null
+              ? subTotal
+              : calculatedSubTotal;
+
+          // Calculate finalAmount if not provided
+          const calculatedFinalAmount =
+            finalAmount !== undefined && finalAmount !== null
+              ? finalAmount
+              : finalSubTotal + tax - discount;
+
+          if (calculatedFinalAmount < 0) {
+            throw new CustomError(400, "Final amount cannot be negative");
+          }
+
+          // 4. Validate stock availability and deduct stock
+          for (const product of validatedProducts) {
+            const stockRecord = await StorefrontInventory.findOne(
+              {
+                inventoryId: product.inventoryId,
+                storefrontId: storefrontId,
+              },
+              null,
+              { session }
+            );
+
+            if (!stockRecord) {
+              const inventoryItem = inventoryMap.get(
+                product.inventoryId.toString()
+              );
+              throw new CustomError(
+                404,
+                `Stock record not found for product '${
+                  inventoryItem?.productCode || product.inventoryId
+                }' in storefront`
+              );
+            }
+
+            // Check stock availability
+            const availableQuantity = stockRecord.quantity || 0;
+            if (availableQuantity < product.quantity) {
+              const inventoryItem = inventoryMap.get(
+                product.inventoryId.toString()
+              );
+              throw new CustomError(
+                400,
+                `Insufficient stock for product '${
+                  inventoryItem?.productCode || product.inventoryId
+                }' (${
+                  inventoryItem?.productName || "Unknown"
+                }). Available: ${availableQuantity}, Requested: ${
+                  product.quantity
+                }`
+              );
+            }
+
+            // Deduct stock - modify document directly and save with session
+            // This follows the pattern in StorefrontInventory model's removeStock method
+            stockRecord.quantity -= product.quantity;
+            stockRecord.lastUpdated = new Date();
+            await stockRecord.save({ session });
+          }
+
+          // 5. Create order with calculated values
+          const orderData = {
+            orderNumber,
+            storefrontId: new mongoose.Types.ObjectId(storefrontId),
+            ordersProducts: validatedProducts,
+            creditPersonId: creditPersonId
+              ? new mongoose.Types.ObjectId(creditPersonId)
+              : null,
+            subTotal: finalSubTotal,
+            tax,
+            discount,
+            finalAmount: calculatedFinalAmount,
+            paidAmount,
+            paymentType: paymentType || "paid",
+            paymentMethod: paymentMethod || "cash",
+            orderStatus: "completed", // Order is completed when stock is deducted
+            soldBy,
+          };
+
+          const newOrderArray = await Order.create([orderData], { session });
+          newOrder = newOrderArray[0];
+
+          // 7. Populate references for response (inside transaction for consistency)
+          await newOrder.populate("storefrontId", "locationName locationCode");
+          await newOrder.populate(
+            "ordersProducts.inventoryId",
+            "productName productCode SKU"
           );
-        }
 
-        if (
-          inventoryItem.sellingPrice === undefined ||
-          inventoryItem.sellingPrice === null
-        ) {
-          throw new CustomError(
-            400,
-            `Product '${inventoryItem.productCode}' (${inventoryItem.productName}) does not have a selling price set`
-          );
-        }
-
-        if (inventoryItem.sellingPrice < 0) {
-          throw new CustomError(
-            400,
-            `Product '${inventoryItem.productCode}' (${inventoryItem.productName}) has an invalid selling price: ${inventoryItem.sellingPrice}`
-          );
-        }
-
-        // Store current sellingPrice as snapshot unitPrice in order
-        const unitPrice = inventoryItem.sellingPrice;
-        const productSubTotal = product.quantity * unitPrice;
-        calculatedSubTotal += productSubTotal;
-
-        validatedProducts.push({
-          inventoryId,
-          quantity: product.quantity,
-          unitPrice, // Snapshot of current selling price
+          // Mark as created successfully
+          orderCreated = true;
         });
-      }
 
-      // Use provided subTotal or calculated one
-      const finalSubTotal =
-        subTotal !== undefined && subTotal !== null
-          ? subTotal
-          : calculatedSubTotal;
-
-      // Calculate finalAmount if not provided
-      const calculatedFinalAmount =
-        finalAmount !== undefined && finalAmount !== null
-          ? finalAmount
-          : finalSubTotal + tax - discount;
-
-      if (calculatedFinalAmount < 0) {
-        throw new CustomError(400, "Final amount cannot be negative");
-      }
-
-      // 4. Validate stock availability and deduct stock
-      for (const product of validatedProducts) {
-        const stockRecord = await StorefrontInventory.findOne(
-          {
-            inventoryId: product.inventoryId,
-            storefrontId: storefrontId,
-          },
-          null,
-          { session }
-        );
-
-        if (!stockRecord) {
-          const inventoryItem = inventoryMap.get(
-            product.inventoryId.toString()
-          );
-          throw new CustomError(
-            404,
-            `Stock record not found for product '${
-              inventoryItem?.productCode || product.inventoryId
-            }' in storefront`
-          );
+        // If we reach here, order was created successfully
+        // Send response outside the transaction
+        res.status(201).json({
+          success: true,
+          message: "Order created successfully",
+          data: newOrder,
+        });
+        return; // Exit the retry loop
+      } catch (error) {
+        // Handle transaction errors
+        // If it's a CustomError (validation errors, etc.), pass it to error handler
+        if (error instanceof CustomError) {
+          return next(error);
         }
 
-        // Check stock availability
-        const availableQuantity = stockRecord.quantity || 0;
-        if (availableQuantity < product.quantity) {
-          const inventoryItem = inventoryMap.get(
-            product.inventoryId.toString()
-          );
-          throw new CustomError(
-            400,
-            `Insufficient stock for product '${
-              inventoryItem?.productCode || product.inventoryId
-            }' (${
-              inventoryItem?.productName || "Unknown"
-            }). Available: ${availableQuantity}, Requested: ${product.quantity}`
-          );
+        // Handle MongoDB duplicate key errors - retry with new order number
+        if (error.code === 11000) {
+          retryCount++;
+          if (retryCount < maxRetries) {
+            // Wait a bit before retrying (exponential backoff)
+            await new Promise((resolve) =>
+              setTimeout(resolve, 100 * retryCount)
+            );
+            // Continue to next iteration of retry loop
+            continue;
+          } else {
+            // Max retries reached
+            return next(
+              new CustomError(
+                500,
+                "Failed to generate unique order number after multiple attempts. Please try again."
+              )
+            );
+          }
         }
 
-        // Deduct stock - modify document directly and save with session
-        // This follows the pattern in StorefrontInventory model's removeStock method
-        stockRecord.quantity -= product.quantity;
-        stockRecord.lastUpdated = new Date();
-        await stockRecord.save({ session });
+        // For other errors, store error and break out of retry loop
+        lastError = error;
+        break;
       }
-
-      // 5. Create order with calculated values
-      const orderData = {
-        orderNumber,
-        storefrontId: new mongoose.Types.ObjectId(storefrontId),
-        ordersProducts: validatedProducts,
-        creditPersonId: creditPersonId
-          ? new mongoose.Types.ObjectId(creditPersonId)
-          : null,
-        subTotal: finalSubTotal,
-        tax,
-        discount,
-        finalAmount: calculatedFinalAmount,
-        paidAmount,
-        paymentType: paymentType || "paid",
-        paymentMethod: paymentMethod || "cash",
-        orderStatus: "completed", // Order is completed when stock is deducted
-        soldBy,
-      };
-
-        const newOrderArray = await Order.create([orderData], { session });
-        newOrder = newOrderArray[0];
-
-        // 7. Populate references for response (inside transaction for consistency)
-        await newOrder.populate("storefrontId", "locationName locationCode");
-        await newOrder.populate(
-          "ordersProducts.inventoryId",
-          "productName productCode SKU"
-        );
-
-        // Mark as created successfully
-        orderCreated = true;
-      });
-
-      // If we reach here, order was created successfully
-      // Send response outside the transaction
-      res.status(201).json({
-        success: true,
-        message: "Order created successfully",
-        data: newOrder,
-      });
-      return; // Exit the retry loop
-    } catch (error) {
-      // Handle transaction errors
-      // If it's a CustomError (validation errors, etc.), pass it to error handler
-      if (error instanceof CustomError) {
-        return next(error);
-      }
-
-      // Handle MongoDB duplicate key errors - retry with new order number
-      if (error.code === 11000) {
-        retryCount++;
-        if (retryCount < maxRetries) {
-          // Wait a bit before retrying (exponential backoff)
-          await new Promise((resolve) =>
-            setTimeout(resolve, 100 * retryCount)
-          );
-          // Continue to next iteration of retry loop
-          continue;
-        } else {
-          // Max retries reached
-          return next(
-            new CustomError(
-              500,
-              "Failed to generate unique order number after multiple attempts. Please try again."
-            )
-          );
-        }
-      }
-
-      // For other errors, store error and break out of retry loop
-      lastError = error;
-      break;
     }
-  }
 
-  // If we exit the loop without creating order, handle the error
-  if (!orderCreated) {
+    // If we exit the loop without creating order, handle the error
+    if (!orderCreated) {
+      // Handle validation errors
+      if (!lastError) {
+        lastError = new Error("Order creation failed after retries");
+      }
+      if (lastError.name === "ValidationError") {
+        const errors = Object.values(lastError.errors).map(
+          (val) => val.message
+        );
+        return next(
+          new CustomError(400, `Validation error: ${errors.join(". ")}`)
+        );
+      }
+
+      // For other errors, log and return with actual error message
+      console.error("Order creation error:", lastError);
+      const errorMessage =
+        lastError?.message || String(lastError) || "Unknown error occurred";
+      return next(
+        new CustomError(500, `Order creation failed: ${errorMessage}`)
+      );
+    }
+  } catch (error) {
+    // Handle any errors that escape the retry loop
+    // If it's a CustomError, pass it to error handler
+    if (error instanceof CustomError) {
+      return next(error);
+    }
+
     // Handle validation errors
-    if (!lastError) {
-      lastError = new Error("Order creation failed after retries");
-    }
-    if (lastError.name === "ValidationError") {
-      const errors = Object.values(lastError.errors).map((val) => val.message);
+    if (error.name === "ValidationError") {
+      const errors = Object.values(error.errors).map((val) => val.message);
       return next(
         new CustomError(400, `Validation error: ${errors.join(". ")}`)
       );
     }
 
+    // Handle MongoDB duplicate key errors (shouldn't reach here with retry logic, but just in case)
+    if (error.code === 11000) {
+      return next(
+        new CustomError(400, "Order number already exists. Please try again.")
+      );
+    }
+
     // For other errors, log and return with actual error message
-    console.error("Order creation error:", lastError);
+    console.error("Order creation error:", error);
     const errorMessage =
-      lastError?.message || String(lastError) || "Unknown error occurred";
-    return next(
-      new CustomError(500, `Order creation failed: ${errorMessage}`)
-    );
+      error?.message || String(error) || "Unknown error occurred";
+    return next(new CustomError(500, `Order creation failed: ${errorMessage}`));
+  } finally {
+    // Always end the session
+    await session.endSession();
   }
-} catch (error) {
-  // Handle any errors that escape the retry loop
-  // If it's a CustomError, pass it to error handler
-  if (error instanceof CustomError) {
-    return next(error);
-  }
-
-  // Handle validation errors
-  if (error.name === "ValidationError") {
-    const errors = Object.values(error.errors).map((val) => val.message);
-    return next(
-      new CustomError(400, `Validation error: ${errors.join(". ")}`)
-    );
-  }
-
-  // Handle MongoDB duplicate key errors (shouldn't reach here with retry logic, but just in case)
-  if (error.code === 11000) {
-    return next(
-      new CustomError(400, "Order number already exists. Please try again.")
-    );
-  }
-
-  // For other errors, log and return with actual error message
-  console.error("Order creation error:", error);
-  const errorMessage =
-    error?.message || String(error) || "Unknown error occurred";
-  return next(new CustomError(500, `Order creation failed: ${errorMessage}`));
-} finally {
-  // Always end the session
-  await session.endSession();
-}
 });
 
 export const getAllOrders = asyncErrorHandler(async (req, res, next) => {
