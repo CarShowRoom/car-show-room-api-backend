@@ -5,6 +5,8 @@ import {
   getOrdersByStorefrontId,
   getAllOrders,
   updateOrderCreditPersonId,
+  addOrderItems,
+  removeOrderItems,
 } from "../controllers/order.controller.js";
 
 const router = express.Router();
@@ -17,6 +19,12 @@ router.get("/order/:orderId", getOrders);
 router.get("/order/storefront/:storefrontId", getOrdersByStorefrontId);
 
 // Update/add credit person ID to an order
-router.patch("/order/:orderId/credit-person", updateOrderCreditPersonId);
+router.patch("/order/:orderId/credit-person", protect, updateOrderCreditPersonId);
+
+// Add order items to existing order
+router.patch("/order/:orderId/items/add", protect, addOrderItems);
+
+// Remove order items from existing order
+router.patch("/order/:orderId/items/remove", protect, removeOrderItems);
 
 export default router;
