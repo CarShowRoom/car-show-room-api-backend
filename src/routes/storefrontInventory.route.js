@@ -2,6 +2,7 @@ import express from "express";
 import {
   createStorefrontInventory,
   getAllStorefrontInventory,
+  getAllStorefrontInventoryByStorefrontId,
   getStorefrontInventoryById,
   updateStorefrontInventoryQuantity,
 } from "../controllers/storefrontInventory.controller.js";

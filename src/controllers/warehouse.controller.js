@@ -122,7 +122,7 @@ export const getAllWarehouseStock = asyncErrorHandler(
     const stock = await WarehouseStock.find(query)
       .populate(
         "inventoryId",
-        "productName productCode SKU category buyingPrice sellingPrice"
+        "productName productCode SKU category buyingPrice sellingPrice barcode"
       )
       .populate("warehouseId", "locationName locationCode locationAddress")
       .sort(sort)
@@ -158,7 +158,7 @@ export const getWarehouseStockById = asyncErrorHandler(
     const stock = await WarehouseStock.findById(id)
       .populate(
         "inventoryId",
-        "productName productCode SKU category buyingPrice sellingPrice"
+        "productName productCode SKU category buyingPrice sellingPrice barcode"
       )
       .populate("warehouseId", "locationName locationCode locationAddress");
 
@@ -216,7 +216,7 @@ export const updateWarehouseStockQuantity = asyncErrorHandler(
       // Find the stock before the update to get the current quantity
       // Populate inventoryId and warehouseId for validation and error messages
       const stockToUpdate = await WarehouseStock.findById(id)
-        .populate("inventoryId", "productName productCode SKU")
+        .populate("inventoryId", "productName productCode SKU barcode")
         .populate("warehouseId", "locationName locationCode type isDeleted")
         .session(session);
 
@@ -264,7 +264,7 @@ export const updateWarehouseStockQuantity = asyncErrorHandler(
         },
         { new: true, runValidators: true, session }
       )
-        .populate("inventoryId", "productName productCode SKU category")
+        .populate("inventoryId", "productName productCode SKU category barcode")
         .populate("warehouseId", "locationName locationCode");
 
       // Create audit log entry

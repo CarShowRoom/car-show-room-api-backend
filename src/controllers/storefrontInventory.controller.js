@@ -123,6 +123,93 @@ export const getAllStorefrontInventory = asyncErrorHandler(
       }
     }
 
+    // If groupByStorefront is true, use aggregation to group by storefront
+    if (groupByStorefront === "true") {
+      // Build aggregation pipeline
+      const pipeline = [
+        { $match: query },
+        // Lookup storefront details
+        {
+          $lookup: {
+            from: "locationprofiles",
+            localField: "storefrontId",
+            foreignField: "_id",
+            as: "storefront",
+          },
+        },
+        {
+          $unwind: {
+            path: "$storefront",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        // Lookup inventory details
+        {
+          $lookup: {
+            from: "inventories",
+            localField: "inventoryId",
+            foreignField: "_id",
+            as: "inventory",
+          },
+        },
+        {
+          $unwind: {
+            path: "$inventory",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        // Group by storefront
+        {
+          $group: {
+            _id: "$storefrontId",
+            storefront: {
+              $first: {
+                _id: "$storefront._id",
+                locationName: "$storefront.locationName",
+                locationCode: "$storefront.locationCode",
+              },
+            },
+            inventories: {
+              $push: {
+                _id: "$_id",
+                inventory: {
+                  _id: "$inventory._id",
+                  productName: "$inventory.productName",
+                  productCode: "$inventory.productCode",
+                  SKU: "$inventory.SKU",
+                  category: "$inventory.category",
+                  sellingPrice: "$inventory.sellingPrice",
+                  barcode: "$inventory.barcode",
+                },
+                quantity: "$quantity",
+                isLowStock: "$isLowStock",
+                lastUpdated: "$lastUpdated",
+                createdAt: "$createdAt",
+                updatedAt: "$updatedAt",
+              },
+            },
+            totalInventories: { $sum: 1 },
+          },
+        },
+        // Sort by storefront name
+        {
+          $sort: { "storefront.locationName": 1 },
+        },
+      ];
+
+      // Execute aggregation
+      const groupedData = await StorefrontInventory.aggregate(pipeline);
+
+      res.status(200).json({
+        success: true,
+        message:
+          "Storefront inventory grouped by storefront retrieved successfully",
+        data: groupedData,
+        totalStorefronts: groupedData.length,
+      });
+      return;
+    }
+
     // Pagination
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
@@ -136,7 +223,7 @@ export const getAllStorefrontInventory = asyncErrorHandler(
     const stock = await StorefrontInventory.find(query)
       .populate(
         "inventoryId",
-        "productName productCode SKU category sellingPrice"
+        "productName productCode SKU category sellingPrice barcode"
       )
       .populate("storefrontId", "locationName locationCode")
       .sort(sort)
@@ -175,7 +262,7 @@ export const getStorefrontInventoryById = asyncErrorHandler(
     const stock = await StorefrontInventory.findById(id)
       .populate(
         "inventoryId",
-        "productName productCode SKU category buyingPrice sellingPrice"
+        "productName productCode SKU category buyingPrice sellingPrice barcode"
       )
       .populate("storefrontId", "locationName locationCode locationAddress");
 
@@ -283,7 +370,7 @@ export const updateStorefrontInventoryQuantity = asyncErrorHandler(
         },
         { new: true, runValidators: true, session }
       )
-        .populate("inventoryId", "productName productCode SKU category")
+        .populate("inventoryId", "productName productCode SKU category barcode")
         .populate("storefrontId", "locationName locationCode");
 
       // Create audit log entry
