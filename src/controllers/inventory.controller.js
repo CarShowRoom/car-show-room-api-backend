@@ -222,3 +222,73 @@ export const getInventoryById = asyncErrorHandler(async (req, res, next) => {
     },
   });
 });
+
+// Update inventory metadata
+export const updateInventory = asyncErrorHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const updateData = req.body;
+
+  // Validate MongoDB ObjectId format
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return next(new CustomError(400, "Invalid inventory ID format"));
+  }
+
+  // Check if inventory exists
+  const existingInventory = await Inventory.findById(id);
+  if (!existingInventory) {
+    return next(new CustomError(404, "Inventory item not found"));
+  }
+
+  // Check for uniqueness conflicts if unique fields are being updated
+  if (updateData.productCode) {
+    const existingProduct = await Inventory.findOne({
+      productCode: updateData.productCode.toUpperCase(),
+      _id: { $ne: id },
+    });
+    if (existingProduct) {
+      return next(new CustomError(400, "Product code already exists"));
+    }
+  }
+
+  if (updateData.SKU) {
+    const existingSKU = await Inventory.findOne({
+      SKU: updateData.SKU.toUpperCase(),
+      _id: { $ne: id },
+    });
+    if (existingSKU) {
+      return next(new CustomError(400, "SKU already exists"));
+    }
+  }
+
+  if (updateData.barcode) {
+    const existingBarcode = await Inventory.findOne({
+      barcode: updateData.barcode,
+      _id: { $ne: id },
+    });
+    if (existingBarcode) {
+      return next(new CustomError(400, "Barcode already exists"));
+    }
+  }
+
+  if (updateData.saleCode) {
+    const existingSaleCode = await Inventory.findOne({
+      saleCode: updateData.saleCode.toUpperCase(),
+      _id: { $ne: id },
+    });
+    if (existingSaleCode) {
+      return next(new CustomError(400, "Sale code already exists"));
+    }
+  }
+
+  // Update the inventory
+  const updatedInventory = await Inventory.findByIdAndUpdate(id, updateData, {
+    new: true,
+    runValidators: true,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Inventory item updated successfully",
+    data: updatedInventory,
+  });
+});
