@@ -125,3 +125,27 @@ export const updateExpense = asyncErrorHandler(async (req, res, next) => {
     data: expense,
   });
 });
+
+export const deleteExpense = asyncErrorHandler(async (req, res, next) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return next(new CustomError(400, "Invalid expense ID format"));
+  }
+  const expense = await Expense.findByIdAndDelete(id)
+    .populate({
+      path: "locationId",
+      select: "type locationName locationCode locationAddress",
+    })
+    .populate({
+      path: "adminId",
+      select: "name role",
+    });
+  if (!expense) {
+    return next(new CustomError(404, "Expense not found"));
+  }
+  res.status(200).json({
+    success: true,
+    message: "Expense deleted successfully.",
+    data: expense,
+  });
+});
