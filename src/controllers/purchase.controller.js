@@ -2,6 +2,7 @@ import Purchasing from "../models/purchasing.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import Inventory from "../models/inventory.model.js";
+import { createDateFilter } from "../utils/dateFilter.utils.js";
 
 export const createPurchase = asyncErrorHandler(async (req, res, next) => {
   const { supplierId, products, note, totalAmount } = req.body;
@@ -57,15 +58,60 @@ export const createPurchase = asyncErrorHandler(async (req, res, next) => {
 });
 
 export const getAllPurchases = asyncErrorHandler(async (req, res, next) => {
-  const purchases = await Purchasing.find().populate(
-    "purchasedBy",
-    "name role"
-  );
+  const {
+    page = 1,
+    limit = 10,
+    sortBy = "createdAt",
+    sortOrder = "desc",
+  } = req.query;
+
+  // Build query
+  const query = {};
+
+  // Add date range filter using dateFilter utility
+  // Filter by the 'createdAt' field (when the purchase was created)
+  try {
+    const dateFilter = createDateFilter(req.query, "createdAt", false);
+    Object.assign(query, dateFilter);
+  } catch (error) {
+    // If it's a CustomError, pass it to error handler
+    if (error instanceof CustomError) {
+      return next(error);
+    }
+    // For other errors, wrap and pass
+    return next(new CustomError(400, error.message || "Invalid date filter"));
+  }
+
+  // Pagination
+  const pageNum = parseInt(page);
+  const limitNum = parseInt(limit);
+  const skip = (pageNum - 1) * limitNum;
+
+  // Sort
+  const sort = {};
+  sort[sortBy] = sortOrder === "asc" ? 1 : -1;
+
+  // Execute query with population
+  const purchases = await Purchasing.find(query)
+    .populate("purchasedBy", "name role")
+    .populate("supplierId", "supplierName supplierCode")
+    .sort(sort)
+    .skip(skip)
+    .limit(limitNum);
+
+  // Get total count for pagination
+  const total = await Purchasing.countDocuments(query);
 
   res.status(200).json({
     success: true,
     message: "All purchases retrieved successfully",
     data: purchases,
+    pagination: {
+      currentPage: pageNum,
+      totalPages: Math.ceil(total / limitNum),
+      totalItems: total,
+      itemsPerPage: limitNum,
+    },
   });
 });
 

@@ -11,15 +11,21 @@ import {
 
 export const createStorefrontInventory = asyncErrorHandler(
   async (req, res, next) => {
-    const { inventoryId, storefrontId, quantity = 0 } = req.body;
+    const { inventoryIds, storefrontId, quantity = 0 } = req.body;
 
-    // Validate MongoDB ObjectId format
-    if (!mongoose.Types.ObjectId.isValid(inventoryId)) {
-      return next(new CustomError(400, "Invalid inventory ID format"));
-    }
-
+    // Validate storefrontId
     if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
       return next(new CustomError(400, "Invalid storefront ID format"));
+    }
+
+    // Validate inventoryIds - should be an array
+    if (!Array.isArray(inventoryIds) || inventoryIds.length === 0) {
+      return next(
+        new CustomError(
+          400,
+          "inventoryIds must be a non-empty array of inventory IDs"
+        )
+      );
     }
 
     // Validate quantity
@@ -27,10 +33,17 @@ export const createStorefrontInventory = asyncErrorHandler(
       return next(new CustomError(400, "Quantity cannot be negative"));
     }
 
-    // Check if inventory exists
-    const inventory = await Inventory.findById(inventoryId);
-    if (!inventory) {
-      return next(new CustomError(404, "Inventory not found"));
+    // Validate all inventoryIds are valid MongoDB ObjectIds
+    const invalidIds = inventoryIds.filter(
+      (id) => !mongoose.Types.ObjectId.isValid(id)
+    );
+    if (invalidIds.length > 0) {
+      return next(
+        new CustomError(
+          400,
+          `Invalid inventory ID format(s): ${invalidIds.join(", ")}`
+        )
+      );
     }
 
     // Check if storefront exists
@@ -47,35 +60,118 @@ export const createStorefrontInventory = asyncErrorHandler(
       return next(new CustomError(404, "Storefront is deleted"));
     }
 
-    // Check if stock record already exists
-    const existingStock = await StorefrontInventory.findOne({
-      inventoryId,
-      storefrontId,
+    // Check if all inventories exist
+    const inventories = await Inventory.find({
+      _id: { $in: inventoryIds },
     });
-    if (existingStock) {
+    const foundInventoryIds = inventories.map((inv) => inv._id.toString());
+    const missingInventoryIds = inventoryIds.filter(
+      (id) => !foundInventoryIds.includes(id.toString())
+    );
+    if (missingInventoryIds.length > 0) {
       return next(
         new CustomError(
-          400,
-          "Storefront inventory record already exists. Use update endpoint instead."
+          404,
+          `Inventory not found for ID(s): ${missingInventoryIds.join(", ")}`
         )
       );
     }
 
-    // Create new stock record
-    const stock = await StorefrontInventory.create({
-      inventoryId,
+    // Check which combinations already exist
+    const existingRecords = await StorefrontInventory.find({
+      inventoryId: { $in: inventoryIds },
       storefrontId,
-      quantity,
     });
 
-    // Populate references for response
-    await stock.populate("inventoryId", "productName productCode");
-    await stock.populate("storefrontId", "locationName locationCode");
+    const existingInventoryIds = existingRecords.map((record) =>
+      record.inventoryId.toString()
+    );
+    const newInventoryIds = inventoryIds.filter(
+      (id) => !existingInventoryIds.includes(id.toString())
+    );
+
+    // Create new records for inventoryIds that don't exist
+    // Use Promise.allSettled to handle each creation individually
+    const createdRecords = [];
+    const duplicateRecords = [];
+
+    if (newInventoryIds.length > 0) {
+      const createPromises = newInventoryIds.map(async (inventoryId) => {
+        try {
+          const record = await StorefrontInventory.create({
+            inventoryId,
+            storefrontId,
+            quantity,
+          });
+          await record.populate("inventoryId", "productName productCode");
+          await record.populate("storefrontId", "locationName locationCode");
+          return { status: "created", record };
+        } catch (error) {
+          // Handle duplicate key error (unique constraint violation - error code 11000)
+          if (error.code === 11000) {
+            // If duplicate, fetch the existing record
+            const existingRecord = await StorefrontInventory.findOne({
+              inventoryId,
+              storefrontId,
+            });
+            if (existingRecord) {
+              await existingRecord.populate(
+                "inventoryId",
+                "productName productCode"
+              );
+              await existingRecord.populate(
+                "storefrontId",
+                "locationName locationCode"
+              );
+              return { status: "duplicate", record: existingRecord };
+            }
+          }
+          // For other errors, rethrow to be handled by asyncErrorHandler
+          throw error;
+        }
+      });
+
+      const results = await Promise.allSettled(createPromises);
+
+      // Process results - collect created and duplicate records
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          const { status, record } = result.value;
+          if (status === "created") {
+            createdRecords.push(record);
+          } else if (status === "duplicate") {
+            duplicateRecords.push(record);
+          }
+        } else {
+          // If creation failed for unexpected reasons, throw to be handled by asyncErrorHandler
+          throw result.reason;
+        }
+      }
+    }
+
+    // Combine existing records with duplicates found during creation
+    const allExistingRecords = [...existingRecords, ...duplicateRecords];
+
+    // Populate existing records for response (if not already populated)
+    for (const record of existingRecords) {
+      if (!record.populated("inventoryId")) {
+        await record.populate("inventoryId", "productName productCode");
+        await record.populate("storefrontId", "locationName locationCode");
+      }
+    }
 
     res.status(201).json({
       success: true,
-      message: "Storefront inventory created successfully",
-      data: stock,
+      message: `Processed ${inventoryIds.length} inventory record(s)`,
+      data: {
+        created: createdRecords,
+        alreadyExists: allExistingRecords,
+        summary: {
+          total: inventoryIds.length,
+          created: createdRecords.length,
+          alreadyExists: allExistingRecords.length,
+        },
+      },
     });
   }
 );
