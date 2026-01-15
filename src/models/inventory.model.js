@@ -25,7 +25,7 @@ const inventorySchema = new mongoose.Schema(
     },
     SKU: {
       type: String,
-      required: [true, "SKU is required"],
+      sparse: true, // Optional field - allows multiple nulls, enforces uniqueness when provided
       unique: true,
       trim: true,
       uppercase: true,

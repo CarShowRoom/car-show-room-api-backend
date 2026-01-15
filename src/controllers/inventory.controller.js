@@ -280,11 +280,36 @@ export const updateInventory = asyncErrorHandler(async (req, res, next) => {
     }
   }
 
-  // Update the inventory
-  const updatedInventory = await Inventory.findByIdAndUpdate(id, updateData, {
-    new: true,
-    runValidators: true,
+  // Validate sellingPrice >= buyingPrice
+  // Merge updateData with existing data to get the final values
+  const finalBuyingPrice =
+    updateData.buyingPrice !== undefined
+      ? updateData.buyingPrice
+      : existingInventory.buyingPrice;
+  const finalSellingPrice =
+    updateData.sellingPrice !== undefined
+      ? updateData.sellingPrice
+      : existingInventory.sellingPrice;
+
+  if (finalSellingPrice < finalBuyingPrice) {
+    return next(
+      new CustomError(
+        400,
+        `Selling price (${finalSellingPrice}) should be greater than or equal to buying price (${finalBuyingPrice})`
+      )
+    );
+  }
+
+  // Apply updates to the existing document and save
+  // This ensures validators have access to the complete merged document
+  Object.keys(updateData).forEach((key) => {
+    if (updateData[key] !== undefined) {
+      existingInventory[key] = updateData[key];
+    }
   });
+
+  // Save the updated inventory (this will run all validators with the complete document)
+  const updatedInventory = await existingInventory.save();
 
   res.status(200).json({
     success: true,
