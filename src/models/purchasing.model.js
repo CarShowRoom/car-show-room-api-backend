@@ -7,6 +7,11 @@ const productSchema = new mongoose.Schema(
       ref: "Inventory",
       required: true,
     },
+    productStatus: {
+      type: String,
+      enum: ["pending", "seperated"],
+      default: "pending",
+    },
     productName: {
       type: String,
       required: true,
@@ -18,6 +23,14 @@ const productSchema = new mongoose.Schema(
     purchaseQuantity: {
       type: Number,
       required: true,
+      // Original order quantity - never modified, preserved for record keeping
+    },
+    receivedQuantity: {
+      type: Number,
+      default: 0,
+      min: [0, "Received quantity cannot be negative"],
+      // Tracks total received quantity from all GRNs
+      // remainingQuantity = purchaseQuantity - receivedQuantity
     },
     productCode: {
       type: String,
@@ -32,6 +45,13 @@ const productSchema = new mongoose.Schema(
   }
 );
 
+// Virtual for remaining quantity (purchaseQuantity - receivedQuantity)
+productSchema.virtual("remainingQuantity").get(function () {
+  const purchaseQty = this.purchaseQuantity || 0;
+  const receivedQty = this.receivedQuantity || 0;
+  return Math.max(0, purchaseQty - receivedQty);
+});
+
 const PurchasingSchema = new mongoose.Schema(
   {
     supplierId: {
@@ -42,7 +62,7 @@ const PurchasingSchema = new mongoose.Schema(
     products: [productSchema],
     status: {
       type: String,
-      enum: ["pending", "confirmed", "arrived", "cancelled"],
+      enum: ["pending", "confirmed", "arrived", "cancelled", "completed"],
       default: "pending",
     },
     note: {

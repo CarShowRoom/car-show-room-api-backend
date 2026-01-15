@@ -114,7 +114,7 @@ const goodsRecievedNoteSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Purchasing",
       required: [true, "Purchase order is required"],
-      unique: true, // One GRN per PO - simple one-to-one relationship
+      // Removed unique: true to allow multiple GRNs per PO for partial receiving
     },
     grnDate: {
       type: Date,
@@ -181,7 +181,7 @@ const goodsRecievedNoteSchema = new mongoose.Schema(
 // Pre-save hooks can have issues with create() method
 
 // Indexes for better query performance
-// Note: grnNumber and purchasingId already have indexes from unique: true
+goodsRecievedNoteSchema.index({ purchasingId: 1 }); // Index for querying GRNs by PO
 goodsRecievedNoteSchema.index({ status: 1 });
 goodsRecievedNoteSchema.index({ grnDate: 1 });
 goodsRecievedNoteSchema.index({ isDeleted: 1 });
@@ -231,6 +231,44 @@ goodsRecievedNoteSchema.statics.generateGRNNumber = async function () {
   // Format: GRN-YYYY-NNNN (e.g., GRN-2024-0001)
   return `${prefix}${sequence.toString().padStart(4, "0")}`;
 };
+
+// Static method to drop the unique index on purchasingId (one-time migration)
+// Call this once to remove the old unique constraint that prevents multiple GRNs per PO
+goodsRecievedNoteSchema.statics.dropPurchasingIdUniqueIndex =
+  async function () {
+    try {
+      const collection = this.collection;
+      const indexes = await collection.indexes();
+
+      // Find and drop the unique index on purchasingId if it exists
+      const uniqueIndex = indexes.find(
+        (index) =>
+          index.key && index.key.purchasingId === 1 && index.unique === true
+      );
+
+      if (uniqueIndex) {
+        await collection.dropIndex(uniqueIndex.name);
+        console.log(
+          `Dropped unique index on purchasingId: ${uniqueIndex.name}`
+        );
+        return true;
+      } else {
+        console.log(
+          "No unique index on purchasingId found. Index may have already been dropped."
+        );
+        return false;
+      }
+    } catch (error) {
+      // Index might not exist, which is fine
+      if (error.code === 27 || error.codeName === "IndexNotFound") {
+        console.log(
+          "Unique index on purchasingId does not exist (already removed)."
+        );
+        return false;
+      }
+      throw error;
+    }
+  };
 
 // Note: Warehouse stock updates are now handled by Transfer records
 // This method is deprecated - use Transfer model to update warehouse stock
