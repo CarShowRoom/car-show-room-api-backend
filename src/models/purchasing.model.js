@@ -94,6 +94,14 @@ const PurchasingSchema = new mongoose.Schema(
       ref: "Admin",
       required: [true, "Purchased by is required"],
     },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -142,6 +150,8 @@ PurchasingSchema.index({ poNumber: 1 });
 PurchasingSchema.index({ status: 1 });
 PurchasingSchema.index({ supplierId: 1 });
 PurchasingSchema.index({ createdAt: -1 });
+PurchasingSchema.index({ isDeleted: 1 });
+PurchasingSchema.index({ status: 1, isDeleted: 1 }); // Compound index for common queries
 
 const Purchasing = mongoose.model("Purchasing", PurchasingSchema);
 

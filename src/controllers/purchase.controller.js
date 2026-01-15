@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Purchasing from "../models/purchasing.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
@@ -67,10 +68,32 @@ export const getAllPurchases = asyncErrorHandler(async (req, res, next) => {
     limit = 10,
     sortBy = "createdAt",
     sortOrder = "desc",
+    isDeleted,
   } = req.query;
 
   // Build query
   const query = {};
+
+  // Filter by isDeleted status if provided
+  // Supports: ?isDeleted=true, ?isDeleted=false, or omit to default to false
+  if (isDeleted !== undefined) {
+    // Convert string "true"/"false" to boolean
+    if (isDeleted === "true" || isDeleted === true) {
+      query.isDeleted = true;
+    } else if (isDeleted === "false" || isDeleted === false) {
+      query.isDeleted = false;
+    } else {
+      return next(
+        new CustomError(
+          400,
+          "Invalid isDeleted value. Must be 'true' or 'false'."
+        )
+      );
+    }
+  } else {
+    // Default: exclude deleted purchases if isDeleted is not specified
+    query.isDeleted = false;
+  }
 
   // Add date range filter using dateFilter utility
   // Filter by the 'createdAt' field (when the purchase was created)
@@ -148,7 +171,11 @@ export const getAllPurchases = asyncErrorHandler(async (req, res, next) => {
 export const getPurchaseById = asyncErrorHandler(async (req, res, next) => {
   const { id } = req.params;
 
-  const purchase = await Purchasing.findById(id).populate(
+  // Exclude deleted purchases by default
+  const includeDeleted = req.query.includeDeleted === "true";
+  const query = includeDeleted ? { _id: id } : { _id: id, isDeleted: false };
+
+  const purchase = await Purchasing.findOne(query).populate(
     "purchasedBy",
     "name role"
   );
@@ -169,6 +196,11 @@ export const updatePurchaseStatus = asyncErrorHandler(
     const { id } = req.params;
     const { status } = req.body;
 
+    // Validate MongoDB ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(new CustomError(400, "Invalid purchase order ID format"));
+    }
+
     if (!status) {
       return next(new CustomError(400, "Status is required"));
     }
@@ -183,14 +215,32 @@ export const updatePurchaseStatus = asyncErrorHandler(
       );
     }
 
-    const purchase = await Purchasing.findByIdAndUpdate(
-      id,
+    // First, check if the purchase exists and if it's soft-deleted
+    const existingPurchase = await Purchasing.findById(id);
+
+    if (!existingPurchase) {
+      return next(new CustomError(404, "Purchase order not found"));
+    }
+
+    // Validate that the purchase is not soft-deleted
+    if (existingPurchase.isDeleted === true) {
+      return next(
+        new CustomError(
+          400,
+          "Cannot update status of a soft-deleted purchase order. Please restore the purchase order first."
+        )
+      );
+    }
+
+    // Update the status
+    const purchase = await Purchasing.findOneAndUpdate(
+      { _id: id, isDeleted: false },
       { status },
       { new: true, runValidators: true }
     );
 
     if (!purchase) {
-      return next(new CustomError(404, "Purchase not found"));
+      return next(new CustomError(404, "Purchase order not found"));
     }
 
     res.status(200).json({
@@ -200,3 +250,64 @@ export const updatePurchaseStatus = asyncErrorHandler(
     });
   }
 );
+
+// Soft delete purchase order
+export const softDeletePurchase = asyncErrorHandler(async (req, res, next) => {
+  const { id } = req.params;
+
+  // Validate MongoDB ObjectId format
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return next(new CustomError(400, "Invalid purchase order ID format"));
+  }
+
+  // Find the purchase order
+  const purchase = await Purchasing.findOne({
+    _id: id,
+    isDeleted: false,
+  });
+
+  if (!purchase) {
+    return next(new CustomError(404, "Purchase order not found"));
+  }
+
+  // Soft delete: set isDeleted to true and deletedAt to current date
+  purchase.isDeleted = true;
+  purchase.deletedAt = new Date();
+  await purchase.save();
+
+  res.status(200).json({
+    success: true,
+    message: "Purchase order soft deleted successfully",
+    data: purchase,
+  });
+});
+
+export const restorePurchase = asyncErrorHandler(async (req, res, next) => {
+  const { id } = req.params;
+
+  // Validate MongoDB ObjectId format
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return next(new CustomError(400, "Invalid purchase order ID format"));
+  }
+
+  // Find the purchase order
+  const purchase = await Purchasing.findOne({
+    _id: id,
+    isDeleted: true,
+  });
+
+  if (!purchase) {
+    return next(new CustomError(404, "Purchase order not found"));
+  }
+
+  // Restore: set isDeleted to false and deletedAt to null
+  purchase.isDeleted = false;
+  purchase.deletedAt = null;
+  await purchase.save();
+
+  res.status(200).json({
+    success: true,
+    message: "Purchase order restored successfully",
+    data: purchase,
+  });
+});
