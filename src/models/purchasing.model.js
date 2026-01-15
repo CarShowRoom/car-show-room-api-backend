@@ -62,6 +62,13 @@ productSchema.virtual("remainingQuantity").get(function () {
 
 const PurchasingSchema = new mongoose.Schema(
   {
+    poNumber: {
+      type: String,
+      required: [true, "PO number is required"],
+      unique: true,
+      trim: true,
+      uppercase: true,
+    },
     supplierId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SupplierProfile",
@@ -95,6 +102,46 @@ const PurchasingSchema = new mongoose.Schema(
     toObject: { virtuals: true },
   }
 );
+
+// Static method to generate PO number
+// Format: PO-YYYY-MM-DD-NNNNNN (e.g., PO-2024-01-14-000001)
+PurchasingSchema.statics.generatePONumber = async function () {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const prefix = `PO-${year}-${month}-${day}-`;
+
+  // Find the latest PO for today
+  // Use regex to match PO numbers starting with today's date prefix
+  const latestPO = await this.findOne({
+    poNumber: new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`), // Escape special regex chars
+  })
+    .sort({ createdAt: -1 }) // Sort by creation date instead of poNumber string
+    .select("poNumber");
+
+  let sequence = 1;
+  if (latestPO && latestPO.poNumber) {
+    // Extract sequence number from format: PO-YYYY-MM-DD-NNNNNN
+    const parts = latestPO.poNumber.split("-");
+    if (parts.length === 5) {
+      // Format: ["PO", "YYYY", "MM", "DD", "NNNNNN"]
+      const latestSequence = parseInt(parts[4], 10);
+      if (!isNaN(latestSequence)) {
+        sequence = latestSequence + 1;
+      }
+    }
+  }
+
+  // Format: PO-YYYY-MM-DD-NNNNNN (e.g., PO-2024-01-14-000001)
+  return `${prefix}${sequence.toString().padStart(6, "0")}`;
+};
+
+// Indexes for better query performance
+PurchasingSchema.index({ poNumber: 1 });
+PurchasingSchema.index({ status: 1 });
+PurchasingSchema.index({ supplierId: 1 });
+PurchasingSchema.index({ createdAt: -1 });
 
 const Purchasing = mongoose.model("Purchasing", PurchasingSchema);
 

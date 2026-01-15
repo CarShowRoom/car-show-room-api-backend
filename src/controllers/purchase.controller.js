@@ -41,7 +41,11 @@ export const createPurchase = asyncErrorHandler(async (req, res, next) => {
     })
   );
 
+  // Generate PO number
+  const poNumber = await Purchasing.generatePONumber();
+
   const purchase = await Purchasing.create({
+    poNumber,
     supplierId,
     products: productsWithDetails,
     note: note || "No note available",
@@ -99,13 +103,39 @@ export const getAllPurchases = asyncErrorHandler(async (req, res, next) => {
     .skip(skip)
     .limit(limitNum);
 
+  // Calculate totalRemainingQuantity for each purchase
+  // Convert to plain objects and add totalRemainingQuantity field
+  const purchasesWithTotalRemaining = purchases.map((purchase) => {
+    const purchaseObj = purchase.toObject({ virtuals: true });
+
+    // Calculate totalRemainingQuantity by summing all products' remainingQuantity
+    // Use virtual field if available, otherwise calculate manually
+    const totalRemainingQuantity = purchase.products.reduce(
+      (total, product) => {
+        // Try to use virtual field first, fallback to manual calculation
+        const remainingQty =
+          product.remainingQuantity !== undefined
+            ? product.remainingQuantity
+            : (product.purchaseQuantity || 0) - (product.receivedQuantity || 0);
+        return total + Math.max(0, remainingQty); // Ensure non-negative
+      },
+      0
+    );
+
+    // Add totalRemainingQuantity after products section
+    return {
+      ...purchaseObj,
+      totalRemainingQuantity,
+    };
+  });
+
   // Get total count for pagination
   const total = await Purchasing.countDocuments(query);
 
   res.status(200).json({
     success: true,
     message: "All purchases retrieved successfully",
-    data: purchases,
+    data: purchasesWithTotalRemaining,
     pagination: {
       currentPage: pageNum,
       totalPages: Math.ceil(total / limitNum),
