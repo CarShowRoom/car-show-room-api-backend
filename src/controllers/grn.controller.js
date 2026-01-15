@@ -427,7 +427,14 @@ export const getAllGRN = asyncErrorHandler(async (req, res, next) => {
 
   // Execute query with population (include sellingPrice for profit calculations)
   const grns = await GoodsRecievedNote.find(query)
-    .populate("purchasingId", "status totalAmount")
+    .populate({
+      path: "purchasingId",
+      select: "status totalAmount supplierId poNumber",
+      populate: {
+        path: "supplierId",
+        select: "supplierName supplierCode",
+      },
+    })
     .populate(
       "lineItems.inventoryId",
       "productName productCode SKU buyingPrice sellingPrice"
@@ -465,7 +472,14 @@ export const getGRNById = asyncErrorHandler(async (req, res, next) => {
     _id: id,
     isDeleted: false,
   })
-    .populate("purchasingId", "status totalAmount products")
+    .populate({
+      path: "purchasingId",
+      select: "status totalAmount products supplierId poNumber",
+      populate: {
+        path: "supplierId",
+        select: "supplierName supplierCode",
+      },
+    })
     .populate(
       "lineItems.inventoryId",
       "productName productCode SKU category buyingPrice sellingPrice"
@@ -499,6 +513,140 @@ export const updateGRNStatus = asyncErrorHandler(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: "GRN status updated successfully",
+    data: grn,
+  });
+});
+
+// Update GRN lineItems (goodQuantity and badQuantity)
+export const updateGRNLineItems = asyncErrorHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const { lineItems } = req.body;
+
+  // Validate GRN ID format
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return next(new CustomError(400, "Invalid GRN ID format"));
+  }
+
+  // Validate lineItems
+  if (!lineItems || !Array.isArray(lineItems) || lineItems.length === 0) {
+    return next(
+      new CustomError(
+        400,
+        "Line items are required as an array with at least one item."
+      )
+    );
+  }
+
+  // Find the GRN
+  const grn = await GoodsRecievedNote.findOne({
+    _id: id,
+    isDeleted: false,
+  });
+
+  if (!grn) {
+    return next(new CustomError(404, "GRN not found"));
+  }
+
+  // Validate and update each line item
+  for (const updateItem of lineItems) {
+    // Validate required fields
+    if (!updateItem.lineItemId) {
+      return next(
+        new CustomError(
+          400,
+          "lineItemId is required for each line item update."
+        )
+      );
+    }
+
+    if (
+      updateItem.goodQuantity === undefined ||
+      updateItem.badQuantity === undefined
+    ) {
+      return next(
+        new CustomError(
+          400,
+          "goodQuantity and badQuantity are required for each line item update."
+        )
+      );
+    }
+
+    // Validate quantities are non-negative
+    if (updateItem.goodQuantity < 0 || updateItem.badQuantity < 0) {
+      return next(
+        new CustomError(400, "goodQuantity and badQuantity cannot be negative.")
+      );
+    }
+
+    // Find the line item in the GRN
+    const lineItem = grn.lineItems.id(updateItem.lineItemId);
+    if (!lineItem) {
+      return next(
+        new CustomError(
+          400,
+          `Line item with ID ${updateItem.lineItemId} not found in GRN.`
+        )
+      );
+    }
+
+    // Validate that goodQuantity + badQuantity equals receivedQuantity
+    const sumOfGoodAndBad = updateItem.goodQuantity + updateItem.badQuantity;
+    if (sumOfGoodAndBad !== lineItem.receivedQuantity) {
+      return next(
+        new CustomError(
+          400,
+          `For line item ${updateItem.lineItemId}: goodQuantity (${updateItem.goodQuantity}) + badQuantity (${updateItem.badQuantity}) = ${sumOfGoodAndBad}, but receivedQuantity is ${lineItem.receivedQuantity}. These values must be equal. Please ensure: goodQuantity + badQuantity = receivedQuantity.`
+        )
+      );
+    }
+
+    // Validate that transferredQuantity doesn't exceed new goodQuantity
+    if (updateItem.goodQuantity < lineItem.transferredQuantity) {
+      return next(
+        new CustomError(
+          400,
+          `For line item ${updateItem.lineItemId}: Cannot set goodQuantity (${updateItem.goodQuantity}) less than transferredQuantity (${lineItem.transferredQuantity}). Some quantity has already been transferred.`
+        )
+      );
+    }
+
+    // Update the line item
+    lineItem.goodQuantity = updateItem.goodQuantity;
+    lineItem.badQuantity = updateItem.badQuantity;
+
+    // Update notes if provided
+    if (updateItem.notes !== undefined) {
+      lineItem.notes = updateItem.notes || null;
+    }
+  }
+
+  // Recalculate totalAmount based on updated line items
+  const newTotalAmount = grn.lineItems.reduce(
+    (total, item) => total + item.totalPrice,
+    0
+  );
+  grn.totalAmount = newTotalAmount;
+
+  // Save the updated GRN
+  await grn.save();
+
+  // Populate references for response
+  await grn.populate({
+    path: "purchasingId",
+    select: "status totalAmount supplierId poNumber",
+    populate: {
+      path: "supplierId",
+      select: "supplierName supplierCode",
+    },
+  });
+  await grn.populate(
+    "lineItems.inventoryId",
+    "productName productCode SKU category buyingPrice sellingPrice"
+  );
+
+  res.status(200).json({
+    success: true,
+    message: "GRN line items updated successfully",
     data: grn,
   });
 });
