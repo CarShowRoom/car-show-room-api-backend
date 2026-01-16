@@ -1,4 +1,4 @@
-// Get sale report for a specific storefront
+// Get sale report for a specific storefront or all storefronts
 import mongoose from "mongoose";
 import CustomError from "../utils/customError.js";
 import LocationProfile from "../models/locationProfile.model.js";
@@ -9,31 +9,39 @@ import { createDateFilter } from "../utils/dateFilter.utils.js";
 
 export const getSaleReportByStorefrontId = asyncErrorHandler(
   async (req, res, next) => {
-    const { storefrontId } = req.params;
-    const { startDate, endDate } = req.query;
+    const { storefrontId, startDate, endDate } = req.query;
 
-    // Validate storefrontId
-    if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
-      return next(new CustomError(400, "Invalid storefront ID format"));
-    }
+    let storefront = null;
 
-    // Validate storefront exists
-    const storefront = await LocationProfile.findOne({
-      _id: storefrontId,
-      type: "storefront",
-      isDeleted: false,
-    });
+    // If storefrontId is provided, validate and fetch storefront
+    if (storefrontId) {
+      // Validate storefrontId
+      if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
+        return next(new CustomError(400, "Invalid storefront ID format"));
+      }
 
-    if (!storefront) {
-      return next(new CustomError(404, "Storefront not found"));
+      // Validate storefront exists
+      storefront = await LocationProfile.findOne({
+        _id: storefrontId,
+        type: "storefront",
+        isDeleted: false,
+      });
+
+      if (!storefront) {
+        return next(new CustomError(404, "Storefront not found"));
+      }
     }
 
     // Build query filter
     const filter = {
-      storefrontId: new mongoose.Types.ObjectId(storefrontId),
       isDeleted: false,
       orderStatus: "completed", // Only include completed orders
     };
+
+    // Add storefrontId filter only if provided
+    if (storefrontId) {
+      filter.storefrontId = new mongoose.Types.ObjectId(storefrontId);
+    }
 
     // Add date range filter using dateFilter utility
     let parsedStartDate = null;
@@ -106,11 +114,13 @@ export const getSaleReportByStorefrontId = asyncErrorHandler(
       success: true,
       message: "Sale report fetched successfully",
       data: {
-        storefront: {
-          _id: storefront._id,
-          locationName: storefront.locationName,
-          locationCode: storefront.locationCode,
-        },
+        storefront: storefront
+          ? {
+              _id: storefront._id,
+              locationName: storefront.locationName,
+              locationCode: storefront.locationCode,
+            }
+          : null,
         dateRange,
         report: {
           finalAmount: report.totalFinalAmount, // Main metric as requested

@@ -8,11 +8,9 @@ import {
 
 const router = express.Router();
 
-// Sale report for storefront
-router.get(
-  "/sale-report/storefront/:storefrontId",
-  getSaleReportByStorefrontId
-);
+// Sale report for storefront or all storefronts
+// Use ?storefrontId=<id> for specific storefront, omit for all storefronts
+router.get("/sale-report", getSaleReportByStorefrontId);
 
 // Payment method breakdown report for storefront or all storefronts (paid orders only)
 // Use ?storefrontId=<id> for specific storefront, omit for all storefronts
