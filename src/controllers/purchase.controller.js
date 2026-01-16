@@ -69,6 +69,7 @@ export const getAllPurchases = asyncErrorHandler(async (req, res, next) => {
     sortBy = "createdAt",
     sortOrder = "desc",
     isDeleted,
+    status,
   } = req.query;
 
   // Build query
@@ -93,6 +94,26 @@ export const getAllPurchases = asyncErrorHandler(async (req, res, next) => {
   } else {
     // Default: exclude deleted purchases if isDeleted is not specified
     query.isDeleted = false;
+  }
+
+  // Filter by status if provided
+  if (status !== undefined) {
+    const validStatuses = [
+      "pending",
+      "confirmed",
+      "arrived",
+      "cancelled",
+      "completed",
+    ];
+    if (!validStatuses.includes(status)) {
+      return next(
+        new CustomError(
+          400,
+          `Invalid status. Allowed values: ${validStatuses.join(", ")}`
+        )
+      );
+    }
+    query.status = status;
   }
 
   // Add date range filter using dateFilter utility

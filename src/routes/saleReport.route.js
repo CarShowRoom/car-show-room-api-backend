@@ -14,22 +14,16 @@ router.get(
   getSaleReportByStorefrontId
 );
 
-// Payment method breakdown report for storefront (paid orders only)
-router.get(
-  "/sale-report/storefront/:storefrontId/paid-orders",
-  getPaymentMethodReportByStorefrontId
-);
+// Payment method breakdown report for storefront or all storefronts (paid orders only)
+// Use ?storefrontId=<id> for specific storefront, omit for all storefronts
+router.get("/sale-report/paid-orders", getPaymentMethodReportByStorefrontId);
 
-// Credit sale report with credit records breakdown
-router.get(
-  "/sale-report/storefront/:storefrontId/credit-orders",
-  getCreditSaleReportByStorefrontId
-);
+// Credit sale report with credit records breakdown for storefront or all storefronts
+// Use ?storefrontId=<id> for specific storefront, omit for all storefronts
+router.get("/sale-report/credit-orders", getCreditSaleReportByStorefrontId);
 
-// Product/stock sales statistics report
-router.get(
-  "/sale-report/storefront/:storefrontId/products",
-  getProductSalesReportByStorefrontId
-);
+// Product/stock sales statistics report for storefront or all storefronts
+// Use ?storefrontId=<id> for specific storefront, omit for all storefronts
+router.get("/sale-report/products", getProductSalesReportByStorefrontId);
 
 export default router;

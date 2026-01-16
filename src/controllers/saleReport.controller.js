@@ -128,34 +128,43 @@ export const getSaleReportByStorefrontId = asyncErrorHandler(
   }
 );
 
-// Get payment method breakdown report for a specific storefront (paid orders only)
+// Get payment method breakdown report for a specific storefront or all storefronts (paid orders only)
 export const getPaymentMethodReportByStorefrontId = asyncErrorHandler(
   async (req, res, next) => {
-    const { storefrontId } = req.params;
+    const { storefrontId } = req.query;
 
-    // Validate storefrontId
-    if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
-      return next(new CustomError(400, "Invalid storefront ID format"));
-    }
+    let storefront = null;
 
-    // Validate storefront exists
-    const storefront = await LocationProfile.findOne({
-      _id: storefrontId,
-      type: "storefront",
-      isDeleted: false,
-    });
+    // If storefrontId is provided, validate and fetch storefront
+    if (storefrontId) {
+      // Validate storefrontId
+      if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
+        return next(new CustomError(400, "Invalid storefront ID format"));
+      }
 
-    if (!storefront) {
-      return next(new CustomError(404, "Storefront not found"));
+      // Validate storefront exists
+      storefront = await LocationProfile.findOne({
+        _id: storefrontId,
+        type: "storefront",
+        isDeleted: false,
+      });
+
+      if (!storefront) {
+        return next(new CustomError(404, "Storefront not found"));
+      }
     }
 
     // Build query filter - only paid orders
     const filter = {
-      storefrontId: new mongoose.Types.ObjectId(storefrontId),
       isDeleted: false,
       orderStatus: "completed", // Only include completed orders
       paymentType: "paid", // Only paid orders
     };
+
+    // Add storefrontId filter only if provided
+    if (storefrontId) {
+      filter.storefrontId = new mongoose.Types.ObjectId(storefrontId);
+    }
 
     // Add date range filter using dateFilter utility
     let parsedStartDate = null;
@@ -224,11 +233,13 @@ export const getPaymentMethodReportByStorefrontId = asyncErrorHandler(
       success: true,
       message: "Payment method report fetched successfully",
       data: {
-        storefront: {
-          _id: storefront._id,
-          locationName: storefront.locationName,
-          locationCode: storefront.locationCode,
-        },
+        storefront: storefront
+          ? {
+              _id: storefront._id,
+              locationName: storefront.locationName,
+              locationCode: storefront.locationCode,
+            }
+          : null,
         dateRange,
         totals: {
           totalPaidAmount: totals.totalPaidAmount,
@@ -246,34 +257,43 @@ export const getPaymentMethodReportByStorefrontId = asyncErrorHandler(
   }
 );
 
-// Get credit sale report with credit records breakdown for a specific storefront
+// Get credit sale report with credit records breakdown for a specific storefront or all storefronts
 export const getCreditSaleReportByStorefrontId = asyncErrorHandler(
   async (req, res, next) => {
-    const { storefrontId } = req.params;
+    const { storefrontId } = req.query;
 
-    // Validate storefrontId
-    if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
-      return next(new CustomError(400, "Invalid storefront ID format"));
-    }
+    let storefront = null;
 
-    // Validate storefront exists
-    const storefront = await LocationProfile.findOne({
-      _id: storefrontId,
-      type: "storefront",
-      isDeleted: false,
-    });
+    // If storefrontId is provided, validate and fetch storefront
+    if (storefrontId) {
+      // Validate storefrontId
+      if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
+        return next(new CustomError(400, "Invalid storefront ID format"));
+      }
 
-    if (!storefront) {
-      return next(new CustomError(404, "Storefront not found"));
+      // Validate storefront exists
+      storefront = await LocationProfile.findOne({
+        _id: storefrontId,
+        type: "storefront",
+        isDeleted: false,
+      });
+
+      if (!storefront) {
+        return next(new CustomError(404, "Storefront not found"));
+      }
     }
 
     // Build query filter - only credit orders
     const filter = {
-      storefrontId: new mongoose.Types.ObjectId(storefrontId),
       isDeleted: false,
       orderStatus: "completed", // Only include completed orders
       paymentType: "credit", // Only credit orders
     };
+
+    // Add storefrontId filter only if provided
+    if (storefrontId) {
+      filter.storefrontId = new mongoose.Types.ObjectId(storefrontId);
+    }
 
     // Add date range filter using dateFilter utility
     let parsedStartDate = null;
@@ -414,11 +434,13 @@ export const getCreditSaleReportByStorefrontId = asyncErrorHandler(
       success: true,
       message: "Credit sale report fetched successfully",
       data: {
-        storefront: {
-          _id: storefront._id,
-          locationName: storefront.locationName,
-          locationCode: storefront.locationCode,
-        },
+        storefront: storefront
+          ? {
+              _id: storefront._id,
+              locationName: storefront.locationName,
+              locationCode: storefront.locationCode,
+            }
+          : null,
         dateRange,
         totals: {
           totalFinalAmount,
@@ -436,33 +458,42 @@ export const getCreditSaleReportByStorefrontId = asyncErrorHandler(
   }
 );
 
-// Get product/stock sales statistics for a specific storefront
+// Get product/stock sales statistics for a specific storefront or all storefronts
 export const getProductSalesReportByStorefrontId = asyncErrorHandler(
   async (req, res, next) => {
-    const { storefrontId } = req.params;
+    const { storefrontId } = req.query;
 
-    // Validate storefrontId
-    if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
-      return next(new CustomError(400, "Invalid storefront ID format"));
-    }
+    let storefront = null;
 
-    // Validate storefront exists
-    const storefront = await LocationProfile.findOne({
-      _id: storefrontId,
-      type: "storefront",
-      isDeleted: false,
-    });
+    // If storefrontId is provided, validate and fetch storefront
+    if (storefrontId) {
+      // Validate storefrontId
+      if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
+        return next(new CustomError(400, "Invalid storefront ID format"));
+      }
 
-    if (!storefront) {
-      return next(new CustomError(404, "Storefront not found"));
+      // Validate storefront exists
+      storefront = await LocationProfile.findOne({
+        _id: storefrontId,
+        type: "storefront",
+        isDeleted: false,
+      });
+
+      if (!storefront) {
+        return next(new CustomError(404, "Storefront not found"));
+      }
     }
 
     // Build query filter
     const filter = {
-      storefrontId: new mongoose.Types.ObjectId(storefrontId),
       isDeleted: false,
       orderStatus: "completed", // Only include completed orders
     };
+
+    // Add storefrontId filter only if provided
+    if (storefrontId) {
+      filter.storefrontId = new mongoose.Types.ObjectId(storefrontId);
+    }
 
     // Add date range filter using dateFilter utility
     let parsedStartDate = null;
@@ -501,7 +532,10 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
           totalQuantity: { $sum: "$ordersProducts.quantity" },
           totalRevenue: {
             $sum: {
-              $multiply: ["$ordersProducts.quantity", "$ordersProducts.unitPrice"],
+              $multiply: [
+                "$ordersProducts.quantity",
+                "$ordersProducts.unitPrice",
+              ],
             },
           },
           orderCount: { $addToSet: "$_id" }, // Count unique orders
@@ -584,11 +618,13 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
       success: true,
       message: "Product sales report fetched successfully",
       data: {
-        storefront: {
-          _id: storefront._id,
-          locationName: storefront.locationName,
-          locationCode: storefront.locationCode,
-        },
+        storefront: storefront
+          ? {
+              _id: storefront._id,
+              locationName: storefront.locationName,
+              locationCode: storefront.locationCode,
+            }
+          : null,
         dateRange,
         totals: {
           totalQuantity: totals.totalQuantity,
