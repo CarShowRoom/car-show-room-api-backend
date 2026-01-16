@@ -146,7 +146,7 @@ PurchasingSchema.statics.generatePONumber = async function () {
 };
 
 // Indexes for better query performance
-PurchasingSchema.index({ poNumber: 1 });
+// Note: poNumber already has an index from unique: true, so we don't need to index it again
 PurchasingSchema.index({ status: 1 });
 PurchasingSchema.index({ supplierId: 1 });
 PurchasingSchema.index({ createdAt: -1 });
