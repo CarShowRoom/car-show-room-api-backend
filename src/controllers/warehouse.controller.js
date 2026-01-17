@@ -179,8 +179,8 @@ export const createWarehouseStock = asyncErrorHandler(
 export const getAllWarehouseStock = asyncErrorHandler(
   async (req, res, next) => {
     const {
-      page = 1,
-      limit = 10,
+      page,
+      limit,
       warehouseId,
       inventoryId,
       isLowStock,
@@ -210,40 +210,56 @@ export const getAllWarehouseStock = asyncErrorHandler(
       query.isLowStock = isLowStock === "true";
     }
 
-    // Pagination
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-    const skip = (pageNum - 1) * limitNum;
-
     // Sort
     const sort = {};
     sort[sortBy] = sortOrder === "asc" ? 1 : -1;
 
-    // Execute query with population
-    const stock = await WarehouseStock.find(query)
+    // Build query chain
+    let queryChain = WarehouseStock.find(query)
       .populate(
         "inventoryId",
         "productName productCode SKU category buyingPrice sellingPrice barcode"
       )
       .populate("warehouseId", "locationName locationCode locationAddress")
-      .sort(sort)
-      .skip(skip)
-      .limit(limitNum);
+      .sort(sort);
 
-    // Get total count for pagination
-    const total = await WarehouseStock.countDocuments(query);
+    // Apply pagination only if page or limit is provided
+    const usePagination = page !== undefined || limit !== undefined;
+    let paginationInfo = null;
 
-    res.status(200).json({
-      success: true,
-      message: "Warehouse stock retrieved successfully",
-      data: stock,
-      pagination: {
+    if (usePagination) {
+      const pageNum = parseInt(page) || 1;
+      const limitNum = parseInt(limit) || 10;
+      const skip = (pageNum - 1) * limitNum;
+
+      queryChain = queryChain.skip(skip).limit(limitNum);
+
+      // Get total count for pagination
+      const total = await WarehouseStock.countDocuments(query);
+
+      paginationInfo = {
         currentPage: pageNum,
         totalPages: Math.ceil(total / limitNum),
         totalItems: total,
         itemsPerPage: limitNum,
-      },
-    });
+      };
+    }
+
+    // Execute query
+    const stock = await queryChain;
+
+    const response = {
+      success: true,
+      message: "Warehouse stock retrieved successfully",
+      data: stock,
+    };
+
+    // Only include pagination info if pagination was applied
+    if (paginationInfo) {
+      response.pagination = paginationInfo;
+    }
+
+    res.status(200).json(response);
   }
 );
 
