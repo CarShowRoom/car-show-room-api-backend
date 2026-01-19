@@ -310,10 +310,25 @@ export const getCreditRecordById = asyncErrorHandler(async (req, res, next) => {
 export const getCreditRecordsByCreditPersonId = asyncErrorHandler(
   async (req, res, next) => {
     const { creditPersonId } = req.params;
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, paymentMethod, paymentType } = req.query;
 
     if (!mongoose.Types.ObjectId.isValid(creditPersonId)) {
       return next(new CustomError(400, "Invalid credit person ID format"));
+    }
+
+    // Validate paymentType if provided
+    if (paymentType !== undefined) {
+      const validPaymentTypes = ["credit", "paid"];
+      if (!validPaymentTypes.includes(paymentType)) {
+        return next(
+          new CustomError(
+            400,
+            `Invalid payment type. Allowed values: ${validPaymentTypes.join(
+              ", "
+            )}`
+          )
+        );
+      }
     }
 
     // Validate credit person exists
@@ -323,12 +338,23 @@ export const getCreditRecordsByCreditPersonId = asyncErrorHandler(
       return next(new CustomError(404, "Credit person not found"));
     }
 
-    // Find all orders for this credit person (only credit orders) - for summary information
-    const orders = await Order.find({
+    // Build order query
+    const orderQuery = {
       creditPersonId: creditPersonId,
-      paymentType: "credit",
       isDeleted: false,
-    }).select("_id orderNumber finalAmount paidAmount");
+    };
+
+    // Filter by paymentType if provided, otherwise default to "credit" (since credit records are for credit orders)
+    if (paymentType !== undefined) {
+      orderQuery.paymentType = paymentType;
+    } else {
+      orderQuery.paymentType = "credit"; // Default to credit orders
+    }
+
+    // Find all orders for this credit person - for summary information
+    const orders = await Order.find(orderQuery).select(
+      "_id orderNumber finalAmount paidAmount"
+    );
 
     if (orders.length === 0) {
       return res.status(200).json({
@@ -360,11 +386,22 @@ export const getCreditRecordsByCreditPersonId = asyncErrorHandler(
       });
     }
 
-    // Build query for credit records - now we can query directly by creditPersonId (much faster!)
+    // Build query for credit records
     const query = {
       creditPersonId: creditPersonId,
       isDeleted: false,
     };
+
+    // Filter by orderIds if paymentType is specified (to only get credit records for orders with that paymentType)
+    if (paymentType !== undefined) {
+      const orderIds = orders.map((order) => order._id);
+      query.orderId = { $in: orderIds };
+    }
+
+    // Add paymentMethod filter if provided
+    if (paymentMethod !== undefined) {
+      query.paymentMethod = paymentMethod;
+    }
 
     // Pagination
     const pageNum = parseInt(page);

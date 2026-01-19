@@ -445,6 +445,27 @@ export const getAllOrders = asyncErrorHandler(async (req, res, next) => {
     isDeleted: false,
   };
 
+  // Add paymentType filter if provided
+  const { paymentType, paymentMethod } = req.query;
+  
+  if (paymentType !== undefined) {
+    const validPaymentTypes = ["credit", "paid"];
+    if (!validPaymentTypes.includes(paymentType)) {
+      return next(
+        new CustomError(
+          400,
+          `Invalid payment type. Allowed values: ${validPaymentTypes.join(", ")}`
+        )
+      );
+    }
+    filter.paymentType = paymentType;
+  }
+
+  // Add paymentMethod filter if provided
+  if (paymentMethod !== undefined) {
+    filter.paymentMethod = paymentMethod;
+  }
+
   // Add date range filter using dateFilter utility
   try {
     const dateFilter = createDateFilter(req.query, "createdAt", false);
