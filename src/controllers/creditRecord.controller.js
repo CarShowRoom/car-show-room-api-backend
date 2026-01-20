@@ -399,8 +399,9 @@ export const getCreditRecordsByCreditPersonId = asyncErrorHandler(
     }
 
     // Add paymentMethod filter if provided
-    if (paymentMethod !== undefined) {
-      query.paymentMethod = paymentMethod;
+    if (paymentMethod !== undefined && paymentMethod !== "") {
+      // Trim whitespace from paymentMethod
+      query.paymentMethod = paymentMethod.trim();
     }
 
     // Pagination

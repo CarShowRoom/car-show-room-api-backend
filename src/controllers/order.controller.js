@@ -445,16 +445,19 @@ export const getAllOrders = asyncErrorHandler(async (req, res, next) => {
     isDeleted: false,
   };
 
-  // Add paymentType filter if provided
+  // Extract query parameters
   const { paymentType, paymentMethod } = req.query;
-  
-  if (paymentType !== undefined) {
+
+  // Add paymentType filter if provided
+  if (paymentType !== undefined && paymentType !== "") {
     const validPaymentTypes = ["credit", "paid"];
     if (!validPaymentTypes.includes(paymentType)) {
       return next(
         new CustomError(
           400,
-          `Invalid payment type. Allowed values: ${validPaymentTypes.join(", ")}`
+          `Invalid payment type. Allowed values: ${validPaymentTypes.join(
+            ", "
+          )}`
         )
       );
     }
@@ -462,8 +465,10 @@ export const getAllOrders = asyncErrorHandler(async (req, res, next) => {
   }
 
   // Add paymentMethod filter if provided
-  if (paymentMethod !== undefined) {
-    filter.paymentMethod = paymentMethod;
+  if (paymentMethod !== undefined && paymentMethod !== "") {
+    // Common payment methods: cash, card, bank_transfer, mobile_payment, etc.
+    // Since the model doesn't enforce enum, we'll accept any string but trim it
+    filter.paymentMethod = paymentMethod.trim();
   }
 
   // Add date range filter using dateFilter utility

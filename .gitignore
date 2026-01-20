@@ -1,7 +1,9 @@
 node_modules/
 logs/
 testings/
+legacy/
 ecosystem.config.cjs
+archit-proposed.txt
 .env
 multi-scenario-concurrent-testing.js
 postman-examples-inventory.json
