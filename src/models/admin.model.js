@@ -24,8 +24,8 @@ const adminSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ["owner", "cashier"],
-    default: "owner",
+    enum: ["owner", "admin", "cashier"],
+    required: [true, "Role is required"],
   },
   locationId: {
     type: mongoose.Schema.Types.ObjectId,

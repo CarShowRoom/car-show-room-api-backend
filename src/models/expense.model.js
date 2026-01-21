@@ -29,6 +29,14 @@ const expenseSchema = new mongoose.Schema(
       ref: "Admin",
       required: [true, "Admin is required"],
     },
+    softDeleted: {
+      type: Boolean,
+      default: false,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

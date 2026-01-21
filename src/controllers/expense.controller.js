@@ -57,6 +57,28 @@ export const getExpenseById = asyncErrorHandler(async (req, res, next) => {
 export const getExpenses = asyncErrorHandler(async (req, res, next) => {
   // Build query filter
   const filter = {};
+  const { softDeleted } = req.query;
+
+  // Filter by softDeleted status if provided
+  // Supports: ?softDeleted=true, ?softDeleted=false, or omit to default to false
+  if (softDeleted !== undefined) {
+    // Convert string "true"/"false" to boolean
+    if (softDeleted === "true" || softDeleted === true) {
+      filter.softDeleted = true;
+    } else if (softDeleted === "false" || softDeleted === false) {
+      filter.softDeleted = false;
+    } else {
+      return next(
+        new CustomError(
+          400,
+          "Invalid softDeleted value. Must be 'true' or 'false'."
+        )
+      );
+    }
+  } else {
+    // Default: exclude soft deleted expenses if softDeleted is not specified
+    filter.softDeleted = false;
+  }
 
   // Add date range filter using dateFilter utility
   // Filter by the 'date' field (expense date) rather than createdAt
@@ -126,12 +148,23 @@ export const updateExpense = asyncErrorHandler(async (req, res, next) => {
   });
 });
 
-export const deleteExpense = asyncErrorHandler(async (req, res, next) => {
+export const softDeleteExpense = asyncErrorHandler(async (req, res, next) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return next(new CustomError(400, "Invalid expense ID format"));
   }
-  const expense = await Expense.findByIdAndDelete(id)
+  const expense = await Expense.findById(id);
+  if (!expense) {
+    return next(new CustomError(404, "Expense not found"));
+  }
+  if (expense.softDeleted) {
+    return next(new CustomError(400, "Expense is already soft deleted"));
+  }
+  const softDeletedExpense = await Expense.findByIdAndUpdate(
+    id,
+    { $set: { softDeleted: true, deletedAt: new Date() } },
+    { new: true, runValidators: true }
+  )
     .populate({
       path: "locationId",
       select: "type locationName locationCode locationAddress",
@@ -140,6 +173,57 @@ export const deleteExpense = asyncErrorHandler(async (req, res, next) => {
       path: "adminId",
       select: "name role",
     });
+  if (!softDeletedExpense) {
+    return next(new CustomError(404, "Expense not found"));
+  }
+  res.status(200).json({
+    success: true,
+    message: "Expense soft deleted successfully",
+    data: softDeletedExpense,
+  });
+});
+
+export const restoreExpense = asyncErrorHandler(async (req, res, next) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return next(new CustomError(400, "Invalid expense ID format"));
+  }
+  const expense = await Expense.findById(id);
+  if (!expense) {
+    return next(new CustomError(404, "Expense not found"));
+  }
+  if (!expense.softDeleted) {
+    return next(new CustomError(400, "Expense is not soft deleted"));
+  }
+  const restoredExpense = await Expense.findByIdAndUpdate(
+    id,
+    { $set: { softDeleted: false, deletedAt: null } },
+    { new: true, runValidators: true }
+  )
+    .populate({
+      path: "locationId",
+      select: "type locationName locationCode locationAddress",
+    })
+    .populate({
+      path: "adminId",
+      select: "name role",
+    });
+  if (!restoredExpense) {
+    return next(new CustomError(404, "Expense not found"));
+  }
+  res.status(200).json({
+    success: true,
+    message: "Expense restored successfully",
+    data: restoredExpense,
+  });
+});
+
+export const deleteExpense = asyncErrorHandler(async (req, res, next) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return next(new CustomError(400, "Invalid expense ID format"));
+  }
+  const expense = await Expense.findByIdAndDelete(id);
   if (!expense) {
     return next(new CustomError(404, "Expense not found"));
   }
