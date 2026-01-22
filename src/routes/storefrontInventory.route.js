@@ -21,7 +21,7 @@ router.post(
 router.get(
   "/storefront-inventory",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   getAllStorefrontInventory
 );
 
@@ -29,7 +29,7 @@ router.get(
 router.get(
   "/storefront-inventory/:id",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   getStorefrontInventoryById
 );
 

@@ -5,10 +5,29 @@ import mongoose from "mongoose";
 import { createDateFilter } from "../utils/dateFilter.utils.js";
 
 export const createExpense = asyncErrorHandler(async (req, res, next) => {
-  const { category, amount, date, notes } = req.body;
+  const {
+    category,
+    amount,
+    date,
+    notes,
+    locationId: bodyLocationId,
+  } = req.body;
 
-  const locationId = req.user.locationId;
+  // Use locationId from user if available, otherwise use from request body
+  // This allows owners and admins (who might not have locationId) to create expenses
+  const locationId = req.user.locationId || bodyLocationId;
   const adminId = req.user._id;
+
+  // Validate that locationId is provided
+  if (!locationId) {
+    return next(
+      new CustomError(
+        400,
+        "Location ID is required. Please provide locationId in the request body."
+      )
+    );
+  }
+
   if (!mongoose.Types.ObjectId.isValid(locationId)) {
     return next(new CustomError(400, "Invalid location ID format"));
   }

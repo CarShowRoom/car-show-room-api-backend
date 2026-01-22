@@ -17,25 +17,25 @@ import { permissionGranted } from "../controllers/administrationPolicy.controlle
 router.post(
   "/order",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   createOrder
 );
 router.get(
   "/order",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   getAllOrders
 );
 router.get(
   "/order/:orderId",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   getOrders
 );
 router.get(
   "/order/storefront/:storefrontId",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   getOrdersByStorefrontId
 );
 

@@ -15,7 +15,7 @@ const router = express.Router();
 router.post(
   "/credit-record",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   createCreditPayment
 );
 
@@ -23,7 +23,7 @@ router.post(
 router.get(
   "/credit-record",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   getAllCreditRecords
 );
 
@@ -31,7 +31,7 @@ router.get(
 router.get(
   "/credit-record/:id",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   getCreditRecordById
 );
 
@@ -39,7 +39,7 @@ router.get(
 router.get(
   "/order/:orderId/credit-records",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   getCreditRecordsByOrderId
 );
 
@@ -47,7 +47,7 @@ router.get(
 router.get(
   "/credit-persona/:creditPersonId/credit-records",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   getCreditRecordsByCreditPersonId
 );
 

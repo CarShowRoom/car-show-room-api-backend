@@ -21,7 +21,7 @@ router.post(
 router.get(
   "/warehouse-profile",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   getAllWarehouseProfiles
 );
 
@@ -29,7 +29,7 @@ router.get(
 router.get(
   "/warehouse-profile/:id",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   getWarehouseProfileById
 );
 

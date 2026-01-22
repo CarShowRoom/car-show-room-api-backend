@@ -15,7 +15,12 @@ import {
 
 const router = express.Router();
 
-router.post("/expense", protect, permissionGranted("cashier"), createExpense);
+router.post(
+  "/expense",
+  protect,
+  permissionGranted("cashier", "admin", "owner"),
+  createExpense
+);
 router.get(
   "/expense",
   protect,

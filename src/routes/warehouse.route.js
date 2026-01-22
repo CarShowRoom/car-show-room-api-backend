@@ -21,7 +21,7 @@ router.post(
 router.get(
   "/warehouse",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   getAllWarehouseStock
 );
 
@@ -29,7 +29,7 @@ router.get(
 router.get(
   "/warehouse/:id",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   getWarehouseStockById
 );
 

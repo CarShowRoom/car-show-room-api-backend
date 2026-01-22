@@ -14,6 +14,7 @@ export const protect = asyncErrorHandler(async (req, res, next) => {
     next(
       new CustomError(401, "You are not logged in! Authentication required")
     );
+    return;
   }
 
   const verifyAsync = util.promisify(jwt.verify);
@@ -24,6 +25,7 @@ export const protect = asyncErrorHandler(async (req, res, next) => {
   let user = null;
   if (
     role === "owner" ||
+    role === "admin" ||
     role === "cashier" ||
     role === "kitchen" ||
     role === "bar-counter" ||
@@ -36,6 +38,13 @@ export const protect = asyncErrorHandler(async (req, res, next) => {
   if (!user) {
     const error = new CustomError(401, "The account does not exist");
     next(error);
+    return;
+  }
+
+  if (user.softDeleted) {
+    const error = new CustomError(401, "You can't access this resource.");
+    next(error);
+    return;
   }
 
   // normalize on req.user for downstream middlewares/controllers
