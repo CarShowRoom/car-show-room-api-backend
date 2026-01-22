@@ -14,13 +14,28 @@ import { protect } from "../controllers/administrationPolicy.controller.js";
 import { permissionGranted } from "../controllers/administrationPolicy.controller.js";
 
 // Create new order
-router.post("/order", protect, permissionGranted("owner"), createOrder);
-router.get("/order", protect, permissionGranted("owner"), getAllOrders);
-router.get("/order/:orderId", protect, permissionGranted("owner"), getOrders);
+router.post(
+  "/order",
+  protect,
+  permissionGranted("owner", "admin"),
+  createOrder
+);
+router.get(
+  "/order",
+  protect,
+  permissionGranted("owner", "admin"),
+  getAllOrders
+);
+router.get(
+  "/order/:orderId",
+  protect,
+  permissionGranted("owner", "admin"),
+  getOrders
+);
 router.get(
   "/order/storefront/:storefrontId",
   protect,
-  permissionGranted("owner"),
+  permissionGranted("owner", "admin"),
   getOrdersByStorefrontId
 );
 

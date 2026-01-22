@@ -14,12 +14,22 @@ import {
 
 const router = express.Router();
 
-router.post("/purchase", protect, permissionGranted("owner"), createPurchase);
-router.get("/purchase", protect, permissionGranted("owner"), getAllPurchases);
+router.post(
+  "/purchase",
+  protect,
+  permissionGranted("owner", "admin"),
+  createPurchase
+);
+router.get(
+  "/purchase",
+  protect,
+  permissionGranted("owner", "admin"),
+  getAllPurchases
+);
 router.get(
   "/purchase/:id",
   protect,
-  permissionGranted("owner"),
+  permissionGranted("owner", "admin"),
   getPurchaseById
 );
 router.patch(

@@ -12,7 +12,7 @@ const router = express.Router();
 router.get(
   "/location-profile",
   protect,
-  permissionGranted("owner"),
+  permissionGranted("owner", "admin"),
   getAllLocationProfiles
 );
 
@@ -20,7 +20,7 @@ router.get(
 router.get(
   "/location-profile/:id",
   protect,
-  permissionGranted("owner"),
+  permissionGranted("owner", "admin"),
   getLocationProfileById
 );
 

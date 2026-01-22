@@ -15,19 +15,19 @@ const router = express.Router();
 router.post(
   "/supplier-profile",
   protect,
-  permissionGranted("owner"),
+  permissionGranted("owner", "admin"),
   createSupplierProfile
 );
 router.get(
   "/supplier-profile",
   protect,
-  permissionGranted("owner"),
+  permissionGranted("owner", "admin"),
   getAllSupplierProfiles
 );
 router.get(
   "/supplier-profile/:id",
   protect,
-  permissionGranted("owner"),
+  permissionGranted("owner", "admin"),
   getSupplierProfileById
 );
 router.patch(

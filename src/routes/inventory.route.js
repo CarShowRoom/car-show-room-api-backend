@@ -11,16 +11,26 @@ import { permissionGranted } from "../controllers/administrationPolicy.controlle
 const router = express.Router();
 
 // Create new inventory item
-router.post("/inventory", protect, permissionGranted("owner"), createInventory);
+router.post(
+  "/inventory",
+  protect,
+  permissionGranted("owner", "admin"),
+  createInventory
+);
 
 // Get all inventory items
-router.get("/inventory", protect, permissionGranted("owner"), getAllInventory);
+router.get(
+  "/inventory",
+  protect,
+  permissionGranted("owner", "admin"),
+  getAllInventory
+);
 
 // Get inventory item by ID
 router.get(
   "/inventory/:id",
   protect,
-  permissionGranted("owner"),
+  permissionGranted("owner", "admin"),
   getInventoryById
 );
 
