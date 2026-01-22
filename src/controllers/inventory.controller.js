@@ -240,9 +240,14 @@ export const updateInventory = asyncErrorHandler(async (req, res, next) => {
   }
 
   // Check for uniqueness conflicts if unique fields are being updated
-  if (updateData.productCode) {
+  // productCode is required and unique, so always check if provided
+  if (updateData.productCode !== undefined) {
+    const trimmedProductCode = String(updateData.productCode).trim();
+    if (!trimmedProductCode) {
+      return next(new CustomError(400, "Product code cannot be empty"));
+    }
     const existingProduct = await Inventory.findOne({
-      productCode: updateData.productCode.toUpperCase(),
+      productCode: trimmedProductCode.toUpperCase(),
       _id: { $ne: id },
     });
     if (existingProduct) {
@@ -250,33 +255,48 @@ export const updateInventory = asyncErrorHandler(async (req, res, next) => {
     }
   }
 
-  if (updateData.SKU) {
-    const existingSKU = await Inventory.findOne({
-      SKU: updateData.SKU.toUpperCase(),
-      _id: { $ne: id },
-    });
-    if (existingSKU) {
-      return next(new CustomError(400, "SKU already exists"));
+  // SKU is optional but unique when provided (sparse unique)
+  if (updateData.SKU !== undefined) {
+    const trimmedSKU = String(updateData.SKU).trim();
+    // Allow empty string/null for sparse unique fields
+    if (trimmedSKU) {
+      const existingSKU = await Inventory.findOne({
+        SKU: trimmedSKU.toUpperCase(),
+        _id: { $ne: id },
+      });
+      if (existingSKU) {
+        return next(new CustomError(400, "SKU already exists"));
+      }
     }
   }
 
-  if (updateData.barcode) {
-    const existingBarcode = await Inventory.findOne({
-      barcode: updateData.barcode,
-      _id: { $ne: id },
-    });
-    if (existingBarcode) {
-      return next(new CustomError(400, "Barcode already exists"));
+  // barcode is optional but unique when provided (sparse unique)
+  if (updateData.barcode !== undefined) {
+    const trimmedBarcode = String(updateData.barcode).trim();
+    // Allow empty string/null for sparse unique fields
+    if (trimmedBarcode) {
+      const existingBarcode = await Inventory.findOne({
+        barcode: trimmedBarcode,
+        _id: { $ne: id },
+      });
+      if (existingBarcode) {
+        return next(new CustomError(400, "Barcode already exists"));
+      }
     }
   }
 
-  if (updateData.saleCode) {
-    const existingSaleCode = await Inventory.findOne({
-      saleCode: updateData.saleCode.toUpperCase(),
-      _id: { $ne: id },
-    });
-    if (existingSaleCode) {
-      return next(new CustomError(400, "Sale code already exists"));
+  // saleCode is optional but unique when provided (sparse unique)
+  if (updateData.saleCode !== undefined) {
+    const trimmedSaleCode = String(updateData.saleCode).trim();
+    // Allow empty string/null for sparse unique fields
+    if (trimmedSaleCode) {
+      const existingSaleCode = await Inventory.findOne({
+        saleCode: trimmedSaleCode.toUpperCase(),
+        _id: { $ne: id },
+      });
+      if (existingSaleCode) {
+        return next(new CustomError(400, "Sale code already exists"));
+      }
     }
   }
 

@@ -2,6 +2,7 @@ node_modules/
 logs/
 testings/
 legacy/
+documentations/
 ecosystem.config.cjs
 archit-proposed.txt
 .env
