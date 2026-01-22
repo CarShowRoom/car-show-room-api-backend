@@ -14,30 +14,30 @@ import {
 
 const router = express.Router();
 
-router.post("/purchase", protect, permissionGranted("Owner"), createPurchase);
-router.get("/purchase", protect, permissionGranted("Owner"), getAllPurchases);
+router.post("/purchase", protect, permissionGranted("owner"), createPurchase);
+router.get("/purchase", protect, permissionGranted("owner"), getAllPurchases);
 router.get(
   "/purchase/:id",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   getPurchaseById
 );
 router.patch(
   "/purchase/:id/status",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   updatePurchaseStatus
 );
 router.patch(
   "/purchase/:id/soft-delete",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   softDeletePurchase
 );
 router.patch(
   "/purchase/:id/restore",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   restorePurchase
 );
 export default router;

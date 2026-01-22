@@ -13,7 +13,7 @@ const router = express.Router();
 router.post(
   "/storefront-inventory",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   createStorefrontInventory
 );
 
@@ -21,7 +21,7 @@ router.post(
 router.get(
   "/storefront-inventory",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   getAllStorefrontInventory
 );
 
@@ -29,7 +29,7 @@ router.get(
 router.get(
   "/storefront-inventory/:id",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   getStorefrontInventoryById
 );
 
@@ -37,7 +37,7 @@ router.get(
 router.patch(
   "/storefront-inventory/:id/quantity",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   updateStorefrontInventoryQuantity
 );
 

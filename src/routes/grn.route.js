@@ -13,16 +13,16 @@ import { permissionGranted } from "../controllers/administrationPolicy.controlle
 const router = express.Router();
 
 // Create new GRN
-router.post("/grn", protect, permissionGranted("Owner", "admin"), createGRN);
+router.post("/grn", protect, permissionGranted("owner", "admin"), createGRN);
 
 // Get all GRNs
-router.get("/grn", protect, permissionGranted("Owner", "admin"), getAllGRN);
+router.get("/grn", protect, permissionGranted("owner", "admin"), getAllGRN);
 
 // Get GRN by ID
 router.get(
   "/grn/:id",
   protect,
-  permissionGranted("Owner", "admin"),
+  permissionGranted("owner", "admin"),
   getGRNById
 );
 
@@ -30,7 +30,7 @@ router.get(
 router.patch(
   "/grn/:id/status",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   updateGRNStatus
 );
 
@@ -38,7 +38,7 @@ router.patch(
 router.patch(
   "/grn/:id/line-items",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   updateGRNLineItems
 );
 

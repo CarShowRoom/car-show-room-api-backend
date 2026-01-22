@@ -14,13 +14,13 @@ import { protect } from "../controllers/administrationPolicy.controller.js";
 import { permissionGranted } from "../controllers/administrationPolicy.controller.js";
 
 // Create new order
-router.post("/order", protect, permissionGranted("Owner"), createOrder);
-router.get("/order", protect, permissionGranted("Owner"), getAllOrders);
-router.get("/order/:orderId", protect, permissionGranted("Owner"), getOrders);
+router.post("/order", protect, permissionGranted("owner"), createOrder);
+router.get("/order", protect, permissionGranted("owner"), getAllOrders);
+router.get("/order/:orderId", protect, permissionGranted("owner"), getOrders);
 router.get(
   "/order/storefront/:storefrontId",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   getOrdersByStorefrontId
 );
 
@@ -28,7 +28,7 @@ router.get(
 router.patch(
   "/order/:orderId/credit-person",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   updateOrderCreditPersonId
 );
 
@@ -36,7 +36,7 @@ router.patch(
 router.patch(
   "/order/:orderId/items/add",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   addOrderItems
 );
 
@@ -44,7 +44,7 @@ router.patch(
 router.patch(
   "/order/:orderId/items/remove",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   removeOrderItems
 );
 

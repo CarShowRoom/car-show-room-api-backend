@@ -15,43 +15,43 @@ const router = express.Router();
 router.post(
   "/supplier-profile",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   createSupplierProfile
 );
 router.get(
   "/supplier-profile",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   getAllSupplierProfiles
 );
 router.get(
   "/supplier-profile/:id",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   getSupplierProfileById
 );
 router.patch(
   "/supplier-profile/:id",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   updateSupplierProfile
 );
 router.patch(
   "/supplier-profile/:id/soft-delete",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   softDeleteSupplierProfile
 );
 router.patch(
   "/supplier-profile/:id/restore",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   restoreSupplierProfile
 );
 router.delete(
   "/supplier-profile/:id",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   deleteSupplierProfile
 );
 export default router;

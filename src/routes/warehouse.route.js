@@ -13,7 +13,7 @@ const router = express.Router();
 router.post(
   "/warehouse",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   createWarehouseStock
 );
 
@@ -21,7 +21,7 @@ router.post(
 router.get(
   "/warehouse",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   getAllWarehouseStock
 );
 
@@ -29,7 +29,7 @@ router.get(
 router.get(
   "/warehouse/:id",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   getWarehouseStockById
 );
 
@@ -37,7 +37,7 @@ router.get(
 router.patch(
   "/warehouse/:id/quantity",
   protect,
-  permissionGranted("Owner"),
+  permissionGranted("owner"),
   updateWarehouseStockQuantity
 );
 
