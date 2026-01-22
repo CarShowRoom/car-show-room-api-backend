@@ -13,19 +13,19 @@ const router = Router();
 router.post(
   "/credit-persona",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   createCreditPerson
 );
 router.get(
   "/credit-persona",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   getAllCreditPersons
 );
 router.get(
   "/credit-persona/:id",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   getCreditPersonById
 );
 router.patch(

@@ -7,10 +7,21 @@ import {
 } from "../controllers/transfer.controller.js";
 
 import { protect } from "../controllers/administrationPolicy.controller.js";
+import { permissionGranted } from "../controllers/administrationPolicy.controller.js";
 const router = express.Router();
 
-router.post("/transfer", protect, createTransfer);
-router.get("/transfer", getTransfers);
-router.get("/transfer/:id", getTransferById);
-router.patch("/transfer/:id", updateTransferStatus);
+router.post("/transfer", protect, permissionGranted("Owner"), createTransfer);
+router.get("/transfer", protect, permissionGranted("Owner"), getTransfers);
+router.get(
+  "/transfer/:id",
+  protect,
+  permissionGranted("Owner"),
+  getTransferById
+);
+router.patch(
+  "/transfer/:id",
+  protect,
+  permissionGranted("Owner"),
+  updateTransferStatus
+);
 export default router;

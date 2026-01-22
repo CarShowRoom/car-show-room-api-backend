@@ -14,10 +14,30 @@ import {
 
 const router = express.Router();
 
-router.post("/purchase", protect, createPurchase);
-router.get("/purchase", getAllPurchases);
-router.get("/purchase/:id", getPurchaseById);
-router.patch("/purchase/:id/status", updatePurchaseStatus);
-router.patch("/purchase/:id/soft-delete", softDeletePurchase);
-router.patch("/purchase/:id/restore", restorePurchase);
+router.post("/purchase", protect, permissionGranted("Owner"), createPurchase);
+router.get("/purchase", protect, permissionGranted("Owner"), getAllPurchases);
+router.get(
+  "/purchase/:id",
+  protect,
+  permissionGranted("Owner"),
+  getPurchaseById
+);
+router.patch(
+  "/purchase/:id/status",
+  protect,
+  permissionGranted("Owner"),
+  updatePurchaseStatus
+);
+router.patch(
+  "/purchase/:id/soft-delete",
+  protect,
+  permissionGranted("Owner"),
+  softDeletePurchase
+);
+router.patch(
+  "/purchase/:id/restore",
+  protect,
+  permissionGranted("Owner"),
+  restorePurchase
+);
 export default router;
