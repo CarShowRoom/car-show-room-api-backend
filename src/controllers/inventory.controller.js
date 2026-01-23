@@ -61,8 +61,8 @@ export const createInventory = asyncErrorHandler(async (req, res, next) => {
 // Get all inventory items
 export const getAllInventory = asyncErrorHandler(async (req, res, next) => {
   const {
-    page = 1,
-    limit = 10,
+    page,
+    limit,
     category,
     status,
     search,
@@ -90,35 +90,50 @@ export const getAllInventory = asyncErrorHandler(async (req, res, next) => {
     ];
   }
 
-  // Pagination
-  const pageNum = parseInt(page);
-  const limitNum = parseInt(limit);
-  const skip = (pageNum - 1) * limitNum;
-
   // Sort
   const sort = {};
   sort[sortBy] = sortOrder === "asc" ? 1 : -1;
 
-  // Execute query
-  const inventory = await Inventory.find(query)
-    .sort(sort)
-    .skip(skip)
-    .limit(limitNum);
+  // Build query chain
+  let queryChain = Inventory.find(query).sort(sort);
 
-  // Get total count for pagination
-  const total = await Inventory.countDocuments(query);
+  // Apply pagination only if page or limit is provided
+  const usePagination = page !== undefined || limit !== undefined;
+  let paginationInfo = null;
 
-  res.status(200).json({
-    success: true,
-    message: "Inventory items retrieved successfully",
-    data: inventory,
-    pagination: {
+  if (usePagination) {
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 10;
+    const skip = (pageNum - 1) * limitNum;
+
+    queryChain = queryChain.skip(skip).limit(limitNum);
+
+    // Get total count for pagination
+    const total = await Inventory.countDocuments(query);
+
+    paginationInfo = {
       currentPage: pageNum,
       totalPages: Math.ceil(total / limitNum),
       totalItems: total,
       itemsPerPage: limitNum,
-    },
-  });
+    };
+  }
+
+  // Execute query
+  const inventory = await queryChain;
+
+  const response = {
+    success: true,
+    message: "Inventory items retrieved successfully",
+    data: inventory,
+  };
+
+  // Only include pagination info if pagination was applied
+  if (paginationInfo) {
+    response.pagination = paginationInfo;
+  }
+
+  res.status(200).json(response);
 });
 
 // Get inventory item by ID
