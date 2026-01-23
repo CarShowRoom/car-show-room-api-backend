@@ -30,7 +30,7 @@ router.get(
 router.patch(
   "/grn/:id/status",
   protect,
-  permissionGranted("owner"),
+  permissionGranted("owner", "admin"),
   updateGRNStatus
 );
 
@@ -38,7 +38,7 @@ router.patch(
 router.patch(
   "/grn/:id/line-items",
   protect,
-  permissionGranted("owner"),
+  permissionGranted("owner", "admin"),
   updateGRNLineItems
 );
 

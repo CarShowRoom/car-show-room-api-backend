@@ -43,7 +43,7 @@ router.get(
 router.patch(
   "/order/:orderId/credit-person",
   protect,
-  permissionGranted("owner"),
+  permissionGranted("owner", "admin", "cashier"),
   updateOrderCreditPersonId
 );
 

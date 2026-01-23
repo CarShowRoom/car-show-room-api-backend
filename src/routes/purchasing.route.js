@@ -35,7 +35,7 @@ router.get(
 router.patch(
   "/purchase/:id/status",
   protect,
-  permissionGranted("owner"),
+  permissionGranted("owner", "admin"),
   updatePurchaseStatus
 );
 router.patch(
