@@ -40,12 +40,24 @@ const handleJWTError = (err) => {
 };
 
 const prodErrors = (res, error) => {
+  // Ensure error has required properties
+  const statusCode = error.statusCode || 500;
+  const success = error.success !== undefined ? error.success : false;
+  const message = error.message || "Something went wrong. Please try again later!!!";
+
   if (error.isOperational) {
-    res.status(error.statusCode).json({
-      success: error.success,
-      message: error.message,
+    res.status(statusCode).json({
+      success: success,
+      message: message,
     });
   } else {
+    // Log the error for debugging (but don't expose it to the user)
+    console.error("Production Error:", {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    });
+
     res.status(500).json({
       success: false,
       message: "Something went wrong. Please try again later!!!",
@@ -55,7 +67,7 @@ const prodErrors = (res, error) => {
 
 export const globalErrorHandler = (error, req, res, next) => {
   error.statusCode = error.statusCode || 500;
-  error.success = error.success || false;
+  error.success = error.success !== undefined ? error.success : false;
 
   if (process.env.NODE_ENV === "development") {
     // In development, we want all the juicy details
@@ -63,20 +75,32 @@ export const globalErrorHandler = (error, req, res, next) => {
   } else if (process.env.NODE_ENV === "production") {
     // In production, transform specific technical errors into CustomErrors
     // for a user-friendly response, after they've been logged in their original form.
-    let transformedError = { ...error }; // Create a mutable copy
+    let transformedError = error; // Work with the original error object
 
-    if (transformedError.name === "CastError")
-      transformedError = castErrorHandler(transformedError);
-    if (transformedError.code === 11000)
-      transformedError = duplicateKeyErrorHandler(transformedError);
-    if (transformedError.name === "ValidationError")
-      transformedError = validationErrorHandler(transformedError);
-    if (transformedError.name === "TokenExpiredError")
-      transformedError = handleExpiredJWT(transformedError);
-    if (transformedError.name === "JsonWebTokenError")
-      transformedError = handleJWTError(transformedError);
+    // Transform known error types into CustomErrors
+    if (error.name === "CastError") {
+      transformedError = castErrorHandler(error);
+    } else if (error.code === 11000) {
+      transformedError = duplicateKeyErrorHandler(error);
+    } else if (error.name === "ValidationError") {
+      transformedError = validationErrorHandler(error);
+    } else if (error.name === "TokenExpiredError") {
+      transformedError = handleExpiredJWT(error);
+    } else if (error.name === "JsonWebTokenError") {
+      transformedError = handleJWTError(error);
+    } else if (!error.isOperational) {
+      // If it's not a known error type and not operational, create a generic CustomError
+      // This ensures we always have an operational error with proper structure
+      transformedError = new CustomError(
+        error.statusCode || 500,
+        error.message || "Something went wrong. Please try again later!!!"
+      );
+    }
 
     prodErrors(res, transformedError);
+  } else {
+    // Fallback for other environments
+    prodErrors(res, error);
   }
 };
 
