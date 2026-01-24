@@ -7,6 +7,7 @@ import {
   updateOrderCreditPersonId,
   addOrderItems,
   removeOrderItems,
+  hardDeleteOrder,
 } from "../controllers/order.controller.js";
 
 const router = express.Router();
@@ -62,5 +63,8 @@ router.patch(
   permissionGranted("owner"),
   removeOrderItems
 );
+
+// Hard delete order
+router.delete("/order/:orderId", hardDeleteOrder);
 
 export default router;

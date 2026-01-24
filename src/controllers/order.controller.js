@@ -1221,3 +1221,19 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
     await session.endSession();
   }
 });
+
+export const hardDeleteOrder = asyncErrorHandler(async (req, res, next) => {
+  const { orderId } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    return next(new CustomError(400, "Invalid order ID format"));
+  }
+  const order = await Order.findByIdAndDelete(orderId);
+  if (!order) {
+    return next(new CustomError(404, "Order not found"));
+  }
+  res.status(200).json({
+    success: true,
+    message: "Order hard deleted successfully",
+    data: order,
+  });
+});

@@ -98,6 +98,16 @@ export const updatePassword = asyncErrorHandler(async (req, res, next) => {
     return next(new CustomError(400, "Please provide a new password."));
   }
 
+  if (typeof newPassword !== "string" || newPassword.trim().length === 0) {
+    return next(new CustomError(400, "New password cannot be empty."));
+  }
+
+  if (newPassword.length < 6) {
+    return next(
+      new CustomError(400, "New password must be at least 6 characters long.")
+    );
+  }
+
   if (confirmPassword && newPassword !== confirmPassword) {
     return next(
       new CustomError(400, "New password and confirm password do not match.")
@@ -114,7 +124,7 @@ export const updatePassword = asyncErrorHandler(async (req, res, next) => {
     return next(new CustomError(401, "User is deleted."));
   }
 
-  admin.password = newPassword;
+  admin.password = newPassword.trim();
   admin.updatedAt = Date.now();
 
   await admin.save({ validateBeforeSave: true });
