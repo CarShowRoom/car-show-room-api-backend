@@ -1078,25 +1078,7 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
         });
       }
 
-      // 3. Calculate final order items count to ensure we don't remove all items
-      let finalItemsCount = order.ordersProducts.length;
-      for (const itemToProcess of itemsToProcess) {
-        const newQuantity =
-          itemToProcess.existingItem.quantity - itemToProcess.quantity;
-        if (newQuantity <= 0) {
-          finalItemsCount -= 1; // This item will be removed
-        }
-      }
-
-      // 4. Validate order will still have at least one item (model requirement)
-      if (finalItemsCount === 0) {
-        throw new CustomError(
-          400,
-          "Cannot remove all items from order. Order must have at least one product."
-        );
-      }
-
-      // 5. Process all items - remove from order and restore stock
+      // 3. Process all items - remove from order and restore stock
       // Process in reverse order to avoid index shifting issues when removing items
       const sortedItemsToProcess = itemsToProcess.sort(
         (a, b) => b.existingItemIndex - a.existingItemIndex

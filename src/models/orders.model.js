@@ -34,12 +34,7 @@ const orderSchema = new mongoose.Schema(
     },
     ordersProducts: {
       type: [orderProductsSchema],
-      validate: {
-        validator: function (v) {
-          return v && v.length > 0;
-        },
-        message: "Order must have at least one product",
-      },
+      default: [],
     },
     creditPersonId: {
       type: mongoose.Schema.Types.ObjectId,
