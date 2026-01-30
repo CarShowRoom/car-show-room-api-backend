@@ -4,6 +4,7 @@ import StorefrontInventory from "../models/storefrontInventory.model.js";
 import LocationProfile from "../models/locationProfile.model.js";
 import Inventory from "../models/inventory.model.js";
 import CreditPerson from "../models/creditPersona.model.js";
+import CreditRecord from "../models/creditRecord.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import { createDateFilter } from "../utils/dateFilter.utils.js";
@@ -1209,13 +1210,51 @@ export const hardDeleteOrder = asyncErrorHandler(async (req, res, next) => {
   if (!mongoose.Types.ObjectId.isValid(orderId)) {
     return next(new CustomError(400, "Invalid order ID format"));
   }
-  const order = await Order.findByIdAndDelete(orderId);
+
+  // 1. Find the order first to validate it exists and check conditions
+  const order = await Order.findById(orderId);
   if (!order) {
     return next(new CustomError(404, "Order not found"));
   }
+
+  // 2. Validate order items - order cannot be hard deleted if it has order items
+  if (
+    order.ordersProducts &&
+    Array.isArray(order.ordersProducts) &&
+    order.ordersProducts.length > 0
+  ) {
+    return next(
+      new CustomError(
+        400,
+        "Cannot hard delete order with order items. Order must have empty order items or empty array to be deleted."
+      )
+    );
+  }
+
+  // 3. Check if order has credit records - order cannot be hard deleted if it has credit records
+  const creditRecordsCount = await CreditRecord.countDocuments({
+    orderId: orderId,
+    isDeleted: false,
+  });
+
+  if (creditRecordsCount > 0) {
+    return next(
+      new CustomError(
+        400,
+        `Cannot hard delete order with credit records. This order has ${creditRecordsCount} credit record(s) associated with it.`
+      )
+    );
+  }
+
+  // 4. All validations passed, proceed with hard delete
+  const deletedOrder = await Order.findByIdAndDelete(orderId);
+  if (!deletedOrder) {
+    return next(new CustomError(404, "Order not found"));
+  }
+
   res.status(200).json({
     success: true,
     message: "Order hard deleted successfully",
-    data: order,
+    data: deletedOrder,
   });
 });
