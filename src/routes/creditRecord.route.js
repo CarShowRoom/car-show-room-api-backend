@@ -5,6 +5,7 @@ import {
   getAllCreditRecords,
   getCreditRecordById,
   getCreditRecordsByCreditPersonId,
+  hardDeleteCreditRecord,
 } from "../controllers/creditRecord.controller.js";
 import { protect } from "../controllers/administrationPolicy.controller.js";
 import { permissionGranted } from "../controllers/administrationPolicy.controller.js";
@@ -49,6 +50,14 @@ router.get(
   protect,
   permissionGranted("owner", "admin", "cashier"),
   getCreditRecordsByCreditPersonId
+);
+
+// Hard delete credit record
+router.delete(
+  "/credit-record/:id",
+  protect,
+  permissionGranted("owner"),
+  hardDeleteCreditRecord
 );
 
 export default router;

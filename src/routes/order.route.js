@@ -5,6 +5,7 @@ import {
   getOrdersByStorefrontId,
   getAllOrders,
   updateOrderCreditPersonId,
+  updateOrderPaidAmount,
   addOrderItems,
   removeOrderItems,
   hardDeleteOrder,
@@ -46,6 +47,14 @@ router.patch(
   protect,
   permissionGranted("owner", "admin", "cashier"),
   updateOrderCreditPersonId
+);
+
+// Update order paid amount
+router.patch(
+  "/order/:orderId/paid-amount",
+  protect,
+  permissionGranted("owner"),
+  updateOrderPaidAmount
 );
 
 // Add order items to existing order

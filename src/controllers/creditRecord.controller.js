@@ -99,11 +99,15 @@ export const createCreditPayment = asyncErrorHandler(async (req, res, next) => {
       const creditRecord = creditRecordArray[0];
 
       // 6. Update order's paidAmount to include this credit payment
-      // This denormalizes the data for easier querying
-      order.paidAmount = (order.paidAmount || 0) + paidAmount;
+      // IMPORTANT: We modify the order's paidAmount field here
+      // This denormalizes the data for easier querying and maintains consistency
+      // The order.paidAmount accumulates all credit payments made for this order
+      const previousOrderPaidAmount = order.paidAmount || 0;
+      order.paidAmount = previousOrderPaidAmount + paidAmount;
       await order.save({ session });
 
-      // 7. Reload order to get updated paidAmount (or we can use the updated value directly)
+      // 7. Get the updated paidAmount from the order (already saved above)
+      // The order.paidAmount has been modified and saved in step 6
       const updatedTotalPaid = order.paidAmount;
       const newRemainingBalance = Math.max(
         0,
@@ -282,6 +286,7 @@ export const getAllCreditRecords = asyncErrorHandler(async (req, res, next) => {
   });
 });
 
+//Pending feature
 // Get credit record by ID
 export const getCreditRecordById = asyncErrorHandler(async (req, res, next) => {
   const { id } = req.params;
@@ -470,5 +475,131 @@ export const getCreditRecordsByCreditPersonId = asyncErrorHandler(
         itemsPerPage: limitNum,
       },
     });
+  }
+);
+
+// Hard delete credit record
+export const hardDeleteCreditRecord = asyncErrorHandler(
+  async (req, res, next) => {
+    const { id } = req.params;
+
+    // Validate credit record ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(new CustomError(400, "Invalid credit record ID format"));
+    }
+
+    // Start MongoDB session for transaction
+    const session = await mongoose.startSession();
+
+    try {
+      // Start transaction
+      await session.withTransaction(async () => {
+        // 1. Find the credit record first to validate it exists
+        const creditRecord = await CreditRecord.findById(id).session(session);
+
+        if (!creditRecord) {
+          throw new CustomError(404, "Credit record not found");
+        }
+
+        // 2. Check if credit record is already deleted (soft delete)
+        if (creditRecord.isDeleted) {
+          throw new CustomError(
+            400,
+            "Credit record is already deleted (soft delete)"
+          );
+        }
+
+        // 3. Get the associated order to update its paidAmount
+        const order = await Order.findById(creditRecord.orderId).session(
+          session
+        );
+
+        if (!order) {
+          throw new CustomError(
+            404,
+            "Associated order not found. Cannot proceed with deletion."
+          );
+        }
+
+        // 4. Populate references for response (before deletion)
+        if (creditRecord.creditPersonId) {
+          await creditRecord.populate("creditPersonId", "name phone");
+        }
+
+        // 5. Store credit record amount and previous order paid amount for response
+        const creditRecordAmount = creditRecord.paidAmount || 0;
+        const previousOrderPaidAmount = order.paidAmount || 0;
+
+        // 6. Update order's paidAmount by subtracting the credit record's paidAmount
+        // Since the credit record's paidAmount was added to order.paidAmount when created,
+        // we need to subtract it when deleting
+        const newOrderPaidAmount = Math.max(
+          0,
+          previousOrderPaidAmount - creditRecordAmount
+        );
+        order.paidAmount = newOrderPaidAmount;
+        await order.save({ session });
+
+        // 7. Hard delete the credit record
+        await CreditRecord.findByIdAndDelete(id).session(session);
+
+        // 8. Construct response data
+        const creditRecordResponse = creditRecord.toObject();
+        creditRecordResponse.orderId = {
+          _id: order._id,
+          orderNumber: order.orderNumber,
+          finalAmount: order.finalAmount,
+          paymentType: order.paymentType,
+          previousPaidAmount: previousOrderPaidAmount,
+          newPaidAmount: newOrderPaidAmount,
+        };
+
+        // 9. Send response
+        res.status(200).json({
+          success: true,
+          message: "Credit record hard deleted successfully",
+          data: {
+            deletedCreditRecord: creditRecordResponse,
+            order: {
+              orderNumber: order.orderNumber,
+              previousPaidAmount: previousOrderPaidAmount,
+              deletedAmount: creditRecordAmount,
+              newPaidAmount: newOrderPaidAmount,
+              newRemainingBalance: Math.max(
+                0,
+                order.finalAmount - newOrderPaidAmount
+              ),
+            },
+          },
+        });
+      });
+    } catch (error) {
+      // Handle transaction errors
+      if (error instanceof CustomError) {
+        return next(error);
+      }
+
+      // Handle validation errors
+      if (error.name === "ValidationError") {
+        const errors = Object.values(error.errors).map((val) => val.message);
+        return next(
+          new CustomError(400, `Validation error: ${errors.join(". ")}`)
+        );
+      }
+
+      // For other errors, log and return with actual error message
+      console.error("Hard delete credit record error:", error);
+      const errorMessage =
+        error?.message || String(error) || "Unknown error occurred";
+      return next(
+        new CustomError(
+          500,
+          `Failed to hard delete credit record: ${errorMessage}`
+        )
+      );
+    } finally {
+      // Always end the session
+      await session.endSession();
+    }
   }
 );

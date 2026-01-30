@@ -634,6 +634,100 @@ export const updateOrderCreditPersonId = asyncErrorHandler(
   }
 );
 
+// Update order paid amount
+export const updateOrderPaidAmount = asyncErrorHandler(
+  async (req, res, next) => {
+    const { orderId } = req.params;
+    const { paidAmount } = req.body;
+
+    // Validate orderId
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return next(new CustomError(400, "Invalid order ID format"));
+    }
+
+    // Validate paidAmount is provided
+    if (paidAmount === undefined || paidAmount === null) {
+      return next(new CustomError(400, "Paid amount is required"));
+    }
+
+    // Validate paidAmount is a number
+    if (typeof paidAmount !== "number" || isNaN(paidAmount)) {
+      return next(new CustomError(400, "Paid amount must be a valid number"));
+    }
+
+    // Validate paidAmount is not negative
+    if (paidAmount < 0) {
+      return next(new CustomError(400, "Paid amount cannot be negative"));
+    }
+
+    // Start MongoDB session for transaction
+    const session = await mongoose.startSession();
+
+    try {
+      // Start transaction
+      await session.withTransaction(async () => {
+        // 1. Validate order exists and is not deleted
+        const order = await Order.findById(orderId).session(session);
+
+        if (!order) {
+          throw new CustomError(404, "Order not found");
+        }
+
+        if (order.isDeleted) {
+          throw new CustomError(400, "Cannot update deleted order");
+        }
+
+        // 2. Update order paid amount
+        order.paidAmount = paidAmount;
+        await order.save({ session });
+
+        // 3. Populate references for response
+        await order.populate("storefrontId", "locationName locationCode");
+        await order.populate(
+          "ordersProducts.inventoryId",
+          "productName productCode SKU"
+        );
+        await order.populate("creditPersonId", "name phone");
+        await order.populate("soldBy", "name role");
+
+        // 4. Send response
+        res.status(200).json({
+          success: true,
+          message: "Order paid amount updated successfully",
+          data: order,
+        });
+      });
+    } catch (error) {
+      // Handle transaction errors
+      if (error instanceof CustomError) {
+        return next(error);
+      }
+
+      // Handle validation errors
+      if (error.name === "ValidationError") {
+        const errors = Object.values(error.errors).map((val) => val.message);
+        return next(
+          new CustomError(400, `Validation error: ${errors.join(". ")}`)
+        );
+      }
+
+      // For other errors, log and return with actual error message
+      console.error("Update order paid amount error:", error);
+      const errorMessage =
+        error?.message || String(error) || "Unknown error occurred";
+      return next(
+        new CustomError(
+          500,
+          `Failed to update order paid amount: ${errorMessage}`
+        )
+      );
+    } finally {
+      // Always end the session
+      await session.endSession();
+    }
+  }
+);
+
 export const getOrdersByStorefrontId = asyncErrorHandler(
   async (req, res, next) => {
     const { storefrontId } = req.params;
