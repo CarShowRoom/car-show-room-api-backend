@@ -309,16 +309,16 @@ export const getCreditSaleReportByStorefrontId = asyncErrorHandler(
     let parsedStartDate = null;
     let parsedEndDate = null;
     try {
-      const dateFilter = createDateFilter(req.query, "createdAt", false);
+      const dateFilter = createDateFilter(req.query, "paymentDate", false);
       Object.assign(filter, dateFilter);
 
       // Extract parsed dates from the filter for response
-      if (dateFilter.createdAt) {
-        if (dateFilter.createdAt.$gte) {
-          parsedStartDate = dateFilter.createdAt.$gte;
+      if (dateFilter.paymentDate) {
+        if (dateFilter.paymentDate.$gte) {
+          parsedStartDate = dateFilter.paymentDate.$gte;
         }
-        if (dateFilter.createdAt.$lte) {
-          parsedEndDate = dateFilter.createdAt.$lte;
+        if (dateFilter.paymentDate.$lte) {
+          parsedEndDate = dateFilter.paymentDate.$lte;
         }
       }
     } catch (error) {
