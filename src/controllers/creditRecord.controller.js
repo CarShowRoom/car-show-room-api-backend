@@ -232,11 +232,20 @@ export const getCreditRecordsByOrderId = asyncErrorHandler(
 
 // Get all credit records (with filtering)
 export const getAllCreditRecords = asyncErrorHandler(async (req, res, next) => {
-  const { orderId, page = 1, limit = 10 } = req.query;
+  const {
+    orderId,
+    creditPersonId,
+    paymentMethod,
+    startDate,
+    endDate,
+    page = 1,
+    limit = 10,
+  } = req.query;
 
   // Build query
   const query = { isDeleted: false };
 
+  // Filter by orderId if provided
   if (orderId) {
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
       return next(new CustomError(400, "Invalid order ID format"));
@@ -244,9 +253,23 @@ export const getAllCreditRecords = asyncErrorHandler(async (req, res, next) => {
     query.orderId = orderId;
   }
 
+  // Filter by creditPersonId if provided
+  if (creditPersonId) {
+    if (!mongoose.Types.ObjectId.isValid(creditPersonId)) {
+      return next(new CustomError(400, "Invalid credit person ID format"));
+    }
+    query.creditPersonId = creditPersonId;
+  }
+
+  // Filter by paymentMethod if provided
+  if (paymentMethod) {
+    query.paymentMethod = paymentMethod;
+  }
+
   // Add date range filter using dateFilter utility
   // Filter by the 'paymentDate' field (when the payment was made)
   try {
+    // We pass req.query which contains startDate and endDate
     const dateFilter = createDateFilter(req.query, "paymentDate", false);
     Object.assign(query, dateFilter);
   } catch (error) {
@@ -266,6 +289,8 @@ export const getAllCreditRecords = asyncErrorHandler(async (req, res, next) => {
   // Execute query
   const creditRecords = await CreditRecord.find(query)
     .populate("orderId", "orderNumber finalAmount paymentType")
+    .populate("creditPersonId", "name phone")
+    .populate("addedBy", "name email")
     .sort({ paymentDate: -1 })
     .skip(skip)
     .limit(limitNum);
