@@ -238,8 +238,8 @@ export const getAllCreditRecords = asyncErrorHandler(async (req, res, next) => {
     paymentMethod,
     startDate,
     endDate,
-    page = 1,
-    limit = 10,
+    page,
+    limit,
   } = req.query;
 
   // Build query
@@ -281,34 +281,44 @@ export const getAllCreditRecords = asyncErrorHandler(async (req, res, next) => {
     return next(new CustomError(400, error.message || "Invalid date filter"));
   }
 
-  // Pagination
-  const pageNum = parseInt(page);
-  const limitNum = parseInt(limit);
-  const skip = (pageNum - 1) * limitNum;
-
-  // Execute query
-  const creditRecords = await CreditRecord.find(query)
+  // Execute query with optional pagination
+  let creditRecordsQuery = CreditRecord.find(query)
     .populate("orderId", "orderNumber finalAmount paymentType")
     .populate("creditPersonId", "name phone")
     .populate("addedBy", "name email")
-    .sort({ paymentDate: -1 })
-    .skip(skip)
-    .limit(limitNum);
+    .sort({ paymentDate: -1 });
 
-  // Get total count
-  const total = await CreditRecord.countDocuments(query);
+  let pagination = null;
 
-  res.status(200).json({
-    success: true,
-    message: "Credit records retrieved successfully",
-    data: creditRecords,
-    pagination: {
+  if (page || limit) {
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 10;
+    const skip = (pageNum - 1) * limitNum;
+
+    creditRecordsQuery = creditRecordsQuery.skip(skip).limit(limitNum);
+
+    const total = await CreditRecord.countDocuments(query);
+    pagination = {
       currentPage: pageNum,
       totalPages: Math.ceil(total / limitNum),
       totalItems: total,
       itemsPerPage: limitNum,
-    },
-  });
+    };
+  }
+
+  const creditRecords = await creditRecordsQuery;
+
+  const response = {
+    success: true,
+    message: "Credit records retrieved successfully",
+    data: creditRecords,
+  };
+
+  if (pagination) {
+    response.pagination = pagination;
+  }
+
+  res.status(200).json(response);
 });
 
 //Pending feature
