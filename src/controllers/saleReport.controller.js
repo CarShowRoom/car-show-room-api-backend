@@ -4,6 +4,7 @@ import CustomError from "../utils/customError.js";
 import LocationProfile from "../models/locationProfile.model.js";
 import Order from "../models/orders.model.js";
 import CreditRecord from "../models/creditRecord.model.js";
+import CreditPerson from "../models/creditPersona.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import { createDateFilter } from "../utils/dateFilter.utils.js";
 
@@ -842,6 +843,199 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
           totalUniqueProducts: totals.totalUniqueProducts,
         },
         products: productSalesReport,
+      },
+    });
+  }
+);
+
+// Get credit persona product report - shows what products a credit person bought and how much
+export const getCreditPersonaProductReport = asyncErrorHandler(
+  async (req, res, next) => {
+    const { creditPersonaId, storefrontId, startDate, endDate } = req.query;
+
+    // Validate creditPersonaId
+    if (!creditPersonaId) {
+      return next(new CustomError(400, "Credit persona ID is required"));
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(creditPersonaId)) {
+      return next(new CustomError(400, "Invalid credit persona ID format"));
+    }
+
+    // Validate credit persona exists
+    const creditPersona = await CreditPerson.findOne({
+      _id: creditPersonaId,
+      isDeleted: false,
+    });
+
+    if (!creditPersona) {
+      return next(new CustomError(404, "Credit persona not found"));
+    }
+
+    let storefront = null;
+
+    // If storefrontId is provided, validate and fetch storefront
+    if (storefrontId) {
+      // Validate storefrontId
+      if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
+        return next(new CustomError(400, "Invalid storefront ID format"));
+      }
+
+      // Validate storefront exists
+      storefront = await LocationProfile.findOne({
+        _id: storefrontId,
+        type: "storefront",
+        isDeleted: false,
+      });
+
+      if (!storefront) {
+        return next(new CustomError(404, "Storefront not found"));
+      }
+    }
+
+    // Build query filter - only credit orders for this specific credit persona
+    const filter = {
+      isDeleted: false,
+      orderStatus: "completed", // Only include completed orders
+      paymentType: "credit", // Only credit orders
+      creditPersonId: new mongoose.Types.ObjectId(creditPersonaId),
+    };
+
+    // Add storefrontId filter only if provided
+    if (storefrontId) {
+      filter.storefrontId = new mongoose.Types.ObjectId(storefrontId);
+    }
+
+    // Add date range filter using dateFilter utility
+    let parsedStartDate = null;
+    let parsedEndDate = null;
+    try {
+      const dateFilter = createDateFilter(req.query, "createdAt", false);
+      Object.assign(filter, dateFilter);
+
+      // Extract parsed dates from the filter for response
+      if (dateFilter.createdAt) {
+        if (dateFilter.createdAt.$gte) {
+          parsedStartDate = dateFilter.createdAt.$gte;
+        }
+        if (dateFilter.createdAt.$lte) {
+          parsedEndDate = dateFilter.createdAt.$lte;
+        }
+      }
+    } catch (error) {
+      // If it's a CustomError, pass it to error handler
+      if (error instanceof CustomError) {
+        return next(error);
+      }
+      // For other errors, wrap and pass
+      return next(new CustomError(400, error.message || "Invalid date filter"));
+    }
+
+    // Aggregate product data for the credit persona
+    const productReport = await Order.aggregate([
+      { $match: filter },
+      // Unwind the ordersProducts array to get individual products
+      { $unwind: "$ordersProducts" },
+      // Group by inventoryId to aggregate statistics
+      {
+        $group: {
+          _id: "$ordersProducts.inventoryId",
+          totalQuantity: { $sum: "$ordersProducts.quantity" },
+          orderCount: { $addToSet: "$_id" }, // Count unique orders
+          productName: { $first: "$ordersProducts.productName" }, // Get product name from order
+          productCode: { $first: "$ordersProducts.productCode" }, // Get product code from order
+          SKU: { $first: "$ordersProducts.SKU" }, // Get SKU from order
+          unitOfMeasure: { $first: "$ordersProducts.unitOfMeasure" }, // Get unit of measure from order
+        },
+      },
+      // Calculate orderCount as array length
+      {
+        $addFields: {
+          orderCount: { $size: "$orderCount" },
+        },
+      },
+      // Sort by total quantity descending
+      {
+        $sort: { totalQuantity: -1 },
+      },
+      // Lookup inventory details to get complete product information
+      {
+        $lookup: {
+          from: "inventories",
+          localField: "_id",
+          foreignField: "_id",
+          as: "inventory",
+        },
+      },
+      // Unwind inventory array (should be single item)
+      {
+        $unwind: {
+          path: "$inventory",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      // Project final structure - use inventory data if available, otherwise use order data
+      {
+        $project: {
+          _id: 0,
+          inventoryId: "$_id",
+          productName: { $ifNull: ["$inventory.productName", "$productName"] },
+          productCode: { $ifNull: ["$inventory.productCode", "$productCode"] },
+          SKU: { $ifNull: ["$inventory.SKU", "$SKU"] },
+          unitOfMeasure: {
+            $ifNull: ["$inventory.unitOfMeasure", "$unitOfMeasure"],
+          },
+          totalQuantity: 1,
+          orderCount: 1,
+        },
+      },
+    ]);
+
+    // Calculate totals across all products
+    const totals = productReport.reduce(
+      (acc, item) => {
+        acc.totalQuantity += item.totalQuantity;
+        acc.totalUniqueProducts += 1;
+        acc.totalOrderCount += item.orderCount;
+        return acc;
+      },
+      {
+        totalQuantity: 0,
+        totalUniqueProducts: 0,
+        totalOrderCount: 0,
+      }
+    );
+
+    // Get date range info
+    const dateRange = {
+      startDate: parsedStartDate || (startDate ? new Date(startDate) : null),
+      endDate: parsedEndDate || (endDate ? new Date(endDate) : null),
+    };
+
+    res.status(200).json({
+      success: true,
+      statusCode: 200,
+      message: "Credit persona product report fetched successfully",
+      data: {
+        creditPersona: {
+          id: creditPersona._id.toString(),
+          name: creditPersona.name,
+          phone: creditPersona.phone,
+        },
+        storefront: storefront
+          ? {
+              _id: storefront._id,
+              locationName: storefront.locationName,
+              locationCode: storefront.locationCode,
+            }
+          : null,
+        dateRange,
+        totals: {
+          totalQuantity: totals.totalQuantity,
+          totalUniqueProducts: totals.totalUniqueProducts,
+          totalOrderCount: totals.totalOrderCount,
+        },
+        products: productReport,
       },
     });
   }

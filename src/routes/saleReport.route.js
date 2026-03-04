@@ -4,6 +4,7 @@ import {
   getPaymentMethodReportByStorefrontId,
   getCreditSaleReportByStorefrontId,
   getProductSalesReportByStorefrontId,
+  getCreditPersonaProductReport,
 } from "../controllers/saleReport.controller.js";
 import { protect } from "../controllers/administrationPolicy.controller.js";
 import { permissionGranted } from "../controllers/administrationPolicy.controller.js";
@@ -44,6 +45,14 @@ router.get(
   protect,
   permissionGranted("owner", "admin", "cashier"),
   getProductSalesReportByStorefrontId
+);
+
+// Credit persona product report
+router.get(
+  "/sale-report/credit-persona-products",
+  protect,
+  permissionGranted("owner", "admin", "cashier"),
+  getCreditPersonaProductReport
 );
 
 export default router;
