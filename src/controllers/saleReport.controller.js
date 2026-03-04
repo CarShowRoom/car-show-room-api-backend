@@ -865,7 +865,6 @@ export const getCreditPersonaProductReport = asyncErrorHandler(
     // Validate credit persona exists
     const creditPersona = await CreditPerson.findOne({
       _id: creditPersonaId,
-      isDeleted: false,
     });
 
     if (!creditPersona) {
