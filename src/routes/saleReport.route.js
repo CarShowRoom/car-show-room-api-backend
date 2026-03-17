@@ -5,6 +5,7 @@ import {
   getCreditSaleReportByStorefrontId,
   getProductSalesReportByStorefrontId,
   getCreditPersonaProductReport,
+  getSaleProductsAnalyticsByCreditPerson,
 } from "../controllers/saleReport.controller.js";
 import { protect } from "../controllers/administrationPolicy.controller.js";
 import { permissionGranted } from "../controllers/administrationPolicy.controller.js";
@@ -53,6 +54,16 @@ router.get(
   protect,
   permissionGranted("owner", "admin", "cashier"),
   getCreditPersonaProductReport
+);
+
+// Sale products analytics by credit person - shows for each product, which credit persons bought it and their quantities
+// Use ?storefrontId=<id> for specific storefront, omit for all storefronts
+// Use ?inventoryId=<id> to filter by specific product, omit for all products
+router.get(
+  "/sale-report/products-by-credit-person",
+  protect,
+  permissionGranted("owner", "admin", "cashier"),
+  getSaleProductsAnalyticsByCreditPerson
 );
 
 export default router;
