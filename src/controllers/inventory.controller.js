@@ -4,6 +4,7 @@ import WarehouseStock from "../models/warehouse.model.js";
 import StorefrontInventory from "../models/storefrontInventory.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
+import XLSX from "xlsx";
 
 // Create new inventory item
 export const createInventory = asyncErrorHandler(async (req, res, next) => {
@@ -87,6 +88,7 @@ export const getAllInventory = asyncErrorHandler(async (req, res, next) => {
       { productCode: { $regex: search, $options: "i" } },
       { SKU: { $regex: search, $options: "i" } },
       { barcode: { $regex: search, $options: "i" } },
+      { note: { $regex: search, $options: "i" } },
     ];
   }
 
@@ -157,7 +159,7 @@ export const getInventoryById = asyncErrorHandler(async (req, res, next) => {
   })
     .populate(
       "warehouseId",
-      "locationName locationCode locationAddress type status"
+      "locationName locationCode locationAddress type status",
     )
     .select("warehouseId quantity lastUpdated");
 
@@ -167,14 +169,14 @@ export const getInventoryById = asyncErrorHandler(async (req, res, next) => {
   })
     .populate(
       "storefrontId",
-      "locationName locationCode locationAddress type status"
+      "locationName locationCode locationAddress type status",
     )
     .select("storefrontId quantity lastUpdated");
 
   // Format warehouse stock data - filter out null warehouseId (deleted locations)
   const warehouseStockAvailability = warehouseStocks
     .filter(
-      (stock) => stock.warehouseId !== null && stock.warehouseId !== undefined
+      (stock) => stock.warehouseId !== null && stock.warehouseId !== undefined,
     )
     .map((stock) => ({
       locationId: stock.warehouseId._id,
@@ -190,7 +192,8 @@ export const getInventoryById = asyncErrorHandler(async (req, res, next) => {
   // Format storefront stock data - filter out null storefrontId (deleted locations)
   const storefrontStockAvailability = storefrontStocks
     .filter(
-      (stock) => stock.storefrontId !== null && stock.storefrontId !== undefined
+      (stock) =>
+        stock.storefrontId !== null && stock.storefrontId !== undefined,
     )
     .map((stock) => ({
       locationId: stock.storefrontId._id,
@@ -206,12 +209,13 @@ export const getInventoryById = asyncErrorHandler(async (req, res, next) => {
   // Calculate total quantities - only count stocks with valid locations
   const totalWarehouseQuantity = warehouseStocks
     .filter(
-      (stock) => stock.warehouseId !== null && stock.warehouseId !== undefined
+      (stock) => stock.warehouseId !== null && stock.warehouseId !== undefined,
     )
     .reduce((sum, stock) => sum + (stock.quantity || 0), 0);
   const totalStorefrontQuantity = storefrontStocks
     .filter(
-      (stock) => stock.storefrontId !== null && stock.storefrontId !== undefined
+      (stock) =>
+        stock.storefrontId !== null && stock.storefrontId !== undefined,
     )
     .reduce((sum, stock) => sum + (stock.quantity || 0), 0);
   const totalQuantity = totalWarehouseQuantity + totalStorefrontQuantity;
@@ -330,8 +334,8 @@ export const updateInventory = asyncErrorHandler(async (req, res, next) => {
     return next(
       new CustomError(
         400,
-        `Selling price (${finalSellingPrice}) should be greater than or equal to buying price (${finalBuyingPrice})`
-      )
+        `Selling price (${finalSellingPrice}) should be greater than or equal to buying price (${finalBuyingPrice})`,
+      ),
     );
   }
 
@@ -352,3 +356,220 @@ export const updateInventory = asyncErrorHandler(async (req, res, next) => {
     data: updatedInventory,
   });
 });
+
+// Bulk import inventory from Excel file
+export const importInventoryFromExcel = asyncErrorHandler(
+  async (req, res, next) => {
+    if (!req.file) {
+      return next(new CustomError(400, "Please upload an Excel file"));
+    }
+
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(worksheet);
+
+    if (rows.length === 0) {
+      return next(new CustomError(400, "Excel file is empty"));
+    }
+
+    const results = {
+      total: rows.length,
+      success: 0,
+      failed: 0,
+      errors: [],
+      created: [],
+    };
+
+    const validUnitOfMeasures = [
+      "piece",
+      "kg",
+      "gram",
+      "liter",
+      "ml",
+      "meter",
+      "cm",
+      "box",
+      "pack",
+      "carton",
+      "dozen",
+      "pair",
+    ];
+
+    const validStatuses = ["active", "inactive", "discontinued"];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 2; // Excel row number (1-indexed + header)
+
+      try {
+        const productName =
+          row.productName || row.product_name || row["Product Name"];
+        const productCode =
+          row.productCode || row.product_code || row["Product Code"];
+        const category = row.category || row["Category"];
+        const buyingPrice =
+          row.buyingPrice || row.buying_price || row["Buying Price"];
+        const sellingPrice =
+          row.sellingPrice || row.selling_price || row["Selling Price"];
+
+        if (!productName) {
+          throw new Error("Product name is required");
+        }
+        if (!productCode) {
+          throw new Error("Product code is required");
+        }
+        if (!category) {
+          throw new Error("Category is required");
+        }
+        if (
+          buyingPrice === undefined ||
+          buyingPrice === null ||
+          buyingPrice === ""
+        ) {
+          throw new Error("Buying price is required");
+        }
+        if (
+          sellingPrice === undefined ||
+          sellingPrice === null ||
+          sellingPrice === ""
+        ) {
+          throw new Error("Selling price is required");
+        }
+
+        const numBuyingPrice = Number(buyingPrice);
+        const numSellingPrice = Number(sellingPrice);
+
+        if (isNaN(numBuyingPrice) || numBuyingPrice < 0) {
+          throw new Error("Buying price must be a valid non-negative number");
+        }
+        if (isNaN(numSellingPrice) || numSellingPrice < 0) {
+          throw new Error("Selling price must be a valid non-negative number");
+        }
+        if (numSellingPrice < numBuyingPrice) {
+          throw new Error("Selling price must be >= buying price");
+        }
+
+        const existingProduct = await Inventory.findOne({
+          productCode: String(productCode).toUpperCase(),
+        });
+        if (existingProduct) {
+          throw new Error(`Product code '${productCode}' already exists`);
+        }
+
+        const SKU = row.SKU || row.sku;
+        if (SKU) {
+          const existingSKU = await Inventory.findOne({
+            SKU: String(SKU).toUpperCase(),
+          });
+          if (existingSKU) {
+            throw new Error(`SKU '${SKU}' already exists`);
+          }
+        }
+
+        const barcode = row.barcode || row["Barcode"];
+        if (barcode) {
+          const existingBarcode = await Inventory.findOne({
+            barcode: String(barcode),
+          });
+          if (existingBarcode) {
+            throw new Error(`Barcode '${barcode}' already exists`);
+          }
+        }
+
+        const saleCode = row.saleCode || row.sale_code || row["Sale Code"];
+        if (saleCode) {
+          const existingSaleCode = await Inventory.findOne({
+            saleCode: String(saleCode).toUpperCase(),
+          });
+          if (existingSaleCode) {
+            throw new Error(`Sale code '${saleCode}' already exists`);
+          }
+        }
+
+        const unitOfMeasure =
+          row.unitOfMeasure ||
+          row.unit_of_measure ||
+          row["Unit of Measure"] ||
+          "piece";
+        if (
+          !validUnitOfMeasures.includes(String(unitOfMeasure).toLowerCase())
+        ) {
+          throw new Error(`Invalid unit of measure: '${unitOfMeasure}'`);
+        }
+
+        const status = row.status || row["Status"] || "active";
+        if (!validStatuses.includes(String(status).toLowerCase())) {
+          throw new Error(`Invalid status: '${status}'`);
+        }
+
+        const taxRate = row.taxRate || row.tax_rate || row["Tax Rate"] || 0;
+        const numTaxRate = Number(taxRate);
+        if (isNaN(numTaxRate) || numTaxRate < 0 || numTaxRate > 100) {
+          throw new Error("Tax rate must be between 0 and 100");
+        }
+
+        const inventoryData = {
+          productName: String(productName).trim(),
+          productCode: String(productCode).trim().toUpperCase(),
+          saleCode: saleCode
+            ? String(saleCode).trim().toUpperCase()
+            : undefined,
+          SKU: SKU ? String(SKU).trim().toUpperCase() : undefined,
+          barcode: barcode ? String(barcode).trim() : undefined,
+          category: String(category).trim(),
+          subCategory:
+            row.subCategory ||
+            row.sub_category ||
+            row["Sub Category"] ||
+            "Unknown",
+          brand: row.brand || row["Brand"] || "Unknown",
+          description:
+            row.description || row["Description"] || "No description available",
+          buyingPrice: numBuyingPrice,
+          sellingPrice: numSellingPrice,
+          unitOfMeasure: String(unitOfMeasure).toLowerCase(),
+          reorderPoint: Number(
+            row.reorderPoint || row.reorder_point || row["Reorder Point"] || 0,
+          ),
+          reorderQuantity: Number(
+            row.reorderQuantity ||
+              row.reorder_quantity ||
+              row["Reorder Quantity"] ||
+              0,
+          ),
+          taxRate: numTaxRate,
+          status: String(status).toLowerCase(),
+          tags: row.tags
+            ? String(row.tags)
+                .split(",")
+                .map((t) => t.trim())
+                .filter(Boolean)
+            : [],
+          note: row.note || row["Note"] || "",
+        };
+
+        const newItem = await Inventory.create(inventoryData);
+        results.success++;
+        results.created.push({
+          row: rowNum,
+          id: newItem._id,
+          productCode: newItem.productCode,
+          productName: newItem.productName,
+        });
+      } catch (error) {
+        results.failed++;
+        results.errors.push({
+          row: rowNum,
+          message: error.message,
+        });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Import completed: ${results.success} created, ${results.failed} failed out of ${results.total}`,
+      data: results,
+    });
+  },
+);

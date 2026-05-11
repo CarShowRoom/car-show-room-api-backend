@@ -128,6 +128,12 @@ const inventorySchema = new mongoose.Schema(
         trim: true,
       },
     ],
+    note: {
+      type: String,
+      trim: true,
+      maxlength: [1000, "Note cannot exceed 1000 characters"],
+      default: "",
+    },
     // createdBy: {
     //   type: mongoose.Schema.Types.ObjectId,
     //   ref: "User",
@@ -142,7 +148,7 @@ const inventorySchema = new mongoose.Schema(
     id: false,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
-  }
+  },
 );
 
 // Indexes for better query performance

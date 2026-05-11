@@ -1,0 +1,11 @@
+productName,productCode,category,buyingPrice,sellingPrice,SKU,barcode,saleCode,subCategory,brand,description,unitOfMeasure,reorderPoint,reorderQuantity,taxRate,status,tags,note
+iPhone 15 Pro Case,IP15C-001,Phone Accessories,15000,25000,IP15C-BLK,1234567890123,SALE-IP15C,Cases,Apple,Premium silicone case black,piece,10,50,5,active,"phone,case,premium",Best selling item
+Samsung S24 Ultra Case,SS24C-001,Phone Accessories,12000,20000,SS24C-BLK,1234567890124,SALE-SS24C,Cases,Samsung,Rugged armor case,piece,15,60,5,active,"phone,case,samsung",
+USB-C Charging Cable,USBC-001,Chargers & Cables,3000,8000,USBC-1M,1234567890125,,Cables,UGREEN,1 meter fast charging cable,piece,50,200,3,active,"cable,charger,usb-c",Fast moving item
+Wireless Earbuds,WEB-001,Audio,25000,45000,WEB-BLK,1234567890126,SALE-WEB,Earbuds,Xiaomi,Bluetooth 5.3 noise cancelling,piece,20,100,5,active,"audio,earbuds,wireless",New arrival
+Tempered Glass Screen Protector,TGSP-001,Screen Protection,2000,5000,TGSP-IP15,1234567890127,,Screen Guard,Spigen,9H hardness for iPhone 15 Pro,piece,100,500,3,active,"screen,protector,glass",
+Phone Stand Holder,PSH-001,Accessories,5000,10000,PSH-ADJ,1234567890128,,Stands,Baseus,Adjustable aluminum stand,piece,30,100,3,active,"stand,holder,desk",
+Car Phone Mount,CPM-001,Car Accessories,8000,15000,CPM-MAG,1234567890129,,Car Mount,Baseus,Magnetic car dashboard mount,piece,25,80,5,active,"car,mount,magnetic",
+Power Bank 20000mAh,PB20K-001,Power Banks,20000,35000,PB20K-BLK,1234567890130,SALE-PB20K,Portable Charger,Xiaomi,20000mAh fast charging power bank,piece,15,50,5,active,"power,bank,portable",Popular during holidays
+Wireless Charger Pad,WCP-001,Chargers & Cables,10000,18000,WCP-15W,1234567890131,,Wireless Charger,Anker,15W fast wireless charging pad,piece,20,60,5,active,"charger,wireless,pad",
+Phone Cleaning Kit,PCK-001,Accessories,1500,4000,PCK-SET,1234567890132,,Cleaning,Generic,Screen cleaning spray + microfiber cloth,pack,40,150,3,active,"cleaning,kit,accessories",
