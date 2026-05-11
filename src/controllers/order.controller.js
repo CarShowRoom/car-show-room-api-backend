@@ -22,6 +22,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     paymentType = "paid",
     paymentMethod = "cash",
     creditPersonId,
+    orderDate,
   } = req.body;
   const soldBy = req.user._id;
 
@@ -48,8 +49,8 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     return next(
       new CustomError(
         400,
-        `Invalid payment type. Allowed values: ${validPaymentTypes.join(", ")}`
-      )
+        `Invalid payment type. Allowed values: ${validPaymentTypes.join(", ")}`,
+      ),
     );
   }
 
@@ -63,8 +64,8 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
       return next(
         new CustomError(
           400,
-          "Credit person ID can only be provided when payment type is 'credit'"
-        )
+          "Credit person ID can only be provided when payment type is 'credit'",
+        ),
       );
     }
   }
@@ -75,7 +76,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
 
     if (!product.inventoryId) {
       return next(
-        new CustomError(400, `Product at index ${i}: Inventory ID is required`)
+        new CustomError(400, `Product at index ${i}: Inventory ID is required`),
       );
     }
 
@@ -83,8 +84,8 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
       return next(
         new CustomError(
           400,
-          `Product at index ${i}: Invalid inventory ID format`
-        )
+          `Product at index ${i}: Invalid inventory ID format`,
+        ),
       );
     }
 
@@ -92,8 +93,8 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
       return next(
         new CustomError(
           400,
-          `Product at index ${i}: Quantity must be at least 1`
-        )
+          `Product at index ${i}: Quantity must be at least 1`,
+        ),
       );
     }
   }
@@ -115,6 +116,17 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     return next(new CustomError(400, "Paid amount cannot be negative"));
   }
 
+  // Validate orderDate if provided
+  if (orderDate) {
+    const parsedDate = new Date(orderDate);
+    if (isNaN(parsedDate.getTime())) {
+      return next(new CustomError(400, "Invalid order date format"));
+    }
+    if (parsedDate > new Date()) {
+      return next(new CustomError(400, "Order date cannot be in the future"));
+    }
+  }
+
   // Start MongoDB session for transaction
   const session = await mongoose.startSession();
 
@@ -130,7 +142,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     while (retryCount < maxRetries && !orderCreated) {
       try {
         // Generate order number (before transaction to allow retry)
-        orderNumber = await Order.generateOrderNumber();
+        orderNumber = await Order.generateOrderNumber(orderDate);
 
         // Start transaction
         await session.withTransaction(async () => {
@@ -147,16 +159,15 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
           if (storefront.isDeleted) {
             throw new CustomError(
               400,
-              "Cannot create order for deleted storefront"
+              "Cannot create order for deleted storefront",
             );
           }
 
           // 1a. Validate credit person exists if creditPersonId is provided
           let creditPerson = null;
           if (creditPersonId) {
-            creditPerson = await CreditPerson.findById(creditPersonId).session(
-              session
-            );
+            creditPerson =
+              await CreditPerson.findById(creditPersonId).session(session);
 
             if (!creditPerson) {
               throw new CustomError(404, "Credit person not found");
@@ -168,14 +179,14 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
                 400,
                 `Cannot create order for blacklisted credit person: ${
                   creditPerson.blacklistReason || "No reason provided"
-                }`
+                }`,
               );
             }
           }
 
           // 2. Validate all inventory items exist and get their selling prices
           const inventoryIds = ordersProducts.map(
-            (p) => new mongoose.Types.ObjectId(p.inventoryId)
+            (p) => new mongoose.Types.ObjectId(p.inventoryId),
           );
 
           const inventoryItems = await Inventory.find({
@@ -185,11 +196,11 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
           if (inventoryItems.length !== inventoryIds.length) {
             const foundIds = inventoryItems.map((item) => item._id.toString());
             const missingIds = inventoryIds.filter(
-              (id) => !foundIds.includes(id.toString())
+              (id) => !foundIds.includes(id.toString()),
             );
             throw new CustomError(
               404,
-              `Inventory items not found: ${missingIds.join(", ")}`
+              `Inventory items not found: ${missingIds.join(", ")}`,
             );
           }
 
@@ -205,14 +216,14 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
 
           for (const product of ordersProducts) {
             const inventoryId = new mongoose.Types.ObjectId(
-              product.inventoryId
+              product.inventoryId,
             );
             const inventoryItem = inventoryMap.get(inventoryId.toString());
 
             if (!inventoryItem) {
               throw new CustomError(
                 404,
-                `Inventory item not found: ${product.inventoryId}`
+                `Inventory item not found: ${product.inventoryId}`,
               );
             }
 
@@ -222,14 +233,14 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
             ) {
               throw new CustomError(
                 400,
-                `Product '${inventoryItem.productCode}' (${inventoryItem.productName}) does not have a selling price set`
+                `Product '${inventoryItem.productCode}' (${inventoryItem.productName}) does not have a selling price set`,
               );
             }
 
             if (inventoryItem.sellingPrice < 0) {
               throw new CustomError(
                 400,
-                `Product '${inventoryItem.productCode}' (${inventoryItem.productName}) has an invalid selling price: ${inventoryItem.sellingPrice}`
+                `Product '${inventoryItem.productCode}' (${inventoryItem.productName}) has an invalid selling price: ${inventoryItem.sellingPrice}`,
               );
             }
 
@@ -269,18 +280,18 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
                 storefrontId: storefrontId,
               },
               null,
-              { session }
+              { session },
             );
 
             if (!stockRecord) {
               const inventoryItem = inventoryMap.get(
-                product.inventoryId.toString()
+                product.inventoryId.toString(),
               );
               throw new CustomError(
                 404,
                 `Stock record not found for product '${
                   inventoryItem?.productCode || product.inventoryId
-                }' in storefront`
+                }' in storefront`,
               );
             }
 
@@ -288,7 +299,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
             const availableQuantity = stockRecord.quantity || 0;
             if (availableQuantity < product.quantity) {
               const inventoryItem = inventoryMap.get(
-                product.inventoryId.toString()
+                product.inventoryId.toString(),
               );
               throw new CustomError(
                 400,
@@ -298,7 +309,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
                   inventoryItem?.productName || "Unknown"
                 }). Available: ${availableQuantity}, Requested: ${
                   product.quantity
-                }`
+                }`,
               );
             }
 
@@ -324,18 +335,22 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
             paidAmount,
             paymentType: paymentType || "paid",
             paymentMethod: paymentMethod || "cash",
-            orderStatus: "completed", // Order is completed when stock is deducted
+            orderStatus: "completed",
             soldBy,
           };
 
-          const newOrderArray = await Order.create([orderData], { session });
-          newOrder = newOrderArray[0];
+          if (orderDate) {
+            orderData.createdAt = new Date(orderDate);
+          }
+
+          newOrder = await Order.create([orderData], { session });
+          newOrder = newOrder[0];
 
           // 7. Populate references for response (inside transaction for consistency)
           await newOrder.populate("storefrontId", "locationName locationCode");
           await newOrder.populate(
             "ordersProducts.inventoryId",
-            "productName productCode SKU"
+            "productName productCode SKU",
           );
 
           // Mark as created successfully
@@ -363,7 +378,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
           if (retryCount < maxRetries) {
             // Wait a bit before retrying (exponential backoff)
             await new Promise((resolve) =>
-              setTimeout(resolve, 100 * retryCount)
+              setTimeout(resolve, 100 * retryCount),
             );
             // Continue to next iteration of retry loop
             continue;
@@ -372,8 +387,8 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
             return next(
               new CustomError(
                 500,
-                "Failed to generate unique order number after multiple attempts. Please try again."
-              )
+                "Failed to generate unique order number after multiple attempts. Please try again.",
+              ),
             );
           }
         }
@@ -392,10 +407,10 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
       }
       if (lastError.name === "ValidationError") {
         const errors = Object.values(lastError.errors).map(
-          (val) => val.message
+          (val) => val.message,
         );
         return next(
-          new CustomError(400, `Validation error: ${errors.join(". ")}`)
+          new CustomError(400, `Validation error: ${errors.join(". ")}`),
         );
       }
 
@@ -404,7 +419,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
       const errorMessage =
         lastError?.message || String(lastError) || "Unknown error occurred";
       return next(
-        new CustomError(500, `Order creation failed: ${errorMessage}`)
+        new CustomError(500, `Order creation failed: ${errorMessage}`),
       );
     }
   } catch (error) {
@@ -418,14 +433,14 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     if (error.name === "ValidationError") {
       const errors = Object.values(error.errors).map((val) => val.message);
       return next(
-        new CustomError(400, `Validation error: ${errors.join(". ")}`)
+        new CustomError(400, `Validation error: ${errors.join(". ")}`),
       );
     }
 
     // Handle MongoDB duplicate key errors (shouldn't reach here with retry logic, but just in case)
     if (error.code === 11000) {
       return next(
-        new CustomError(400, "Order number already exists. Please try again.")
+        new CustomError(400, "Order number already exists. Please try again."),
       );
     }
 
@@ -457,9 +472,9 @@ export const getAllOrders = asyncErrorHandler(async (req, res, next) => {
         new CustomError(
           400,
           `Invalid payment type. Allowed values: ${validPaymentTypes.join(
-            ", "
-          )}`
-        )
+            ", ",
+          )}`,
+        ),
       );
     }
     filter.paymentType = paymentType;
@@ -561,14 +576,13 @@ export const updateOrderCreditPersonId = asyncErrorHandler(
         if (order.paymentType !== "credit") {
           throw new CustomError(
             400,
-            "Can only add credit person to credit orders. This order is not a credit order."
+            "Can only add credit person to credit orders. This order is not a credit order.",
           );
         }
 
         // 3. Validate credit person exists
-        const creditPerson = await CreditPerson.findById(
-          creditPersonId
-        ).session(session);
+        const creditPerson =
+          await CreditPerson.findById(creditPersonId).session(session);
 
         if (!creditPerson) {
           throw new CustomError(404, "Credit person not found");
@@ -580,7 +594,7 @@ export const updateOrderCreditPersonId = asyncErrorHandler(
             400,
             `Cannot add blacklisted credit person to order: ${
               creditPerson.blacklistReason || "No reason provided"
-            }`
+            }`,
           );
         }
 
@@ -593,7 +607,7 @@ export const updateOrderCreditPersonId = asyncErrorHandler(
         await order.populate("creditPersonId", "name phone");
         await order.populate(
           "ordersProducts.inventoryId",
-          "productName productCode SKU"
+          "productName productCode SKU",
         );
 
         // 7. Send response
@@ -613,7 +627,7 @@ export const updateOrderCreditPersonId = asyncErrorHandler(
       if (error.name === "ValidationError") {
         const errors = Object.values(error.errors).map((val) => val.message);
         return next(
-          new CustomError(400, `Validation error: ${errors.join(". ")}`)
+          new CustomError(400, `Validation error: ${errors.join(". ")}`),
         );
       }
 
@@ -624,14 +638,14 @@ export const updateOrderCreditPersonId = asyncErrorHandler(
       return next(
         new CustomError(
           500,
-          `Failed to update credit person ID: ${errorMessage}`
-        )
+          `Failed to update credit person ID: ${errorMessage}`,
+        ),
       );
     } finally {
       // Always end the session
       await session.endSession();
     }
-  }
+  },
 );
 
 // Update order paid amount
@@ -685,7 +699,7 @@ export const updateOrderPaidAmount = asyncErrorHandler(
         await order.populate("storefrontId", "locationName locationCode");
         await order.populate(
           "ordersProducts.inventoryId",
-          "productName productCode SKU"
+          "productName productCode SKU",
         );
         await order.populate("creditPersonId", "name phone");
         await order.populate("soldBy", "name role");
@@ -707,7 +721,7 @@ export const updateOrderPaidAmount = asyncErrorHandler(
       if (error.name === "ValidationError") {
         const errors = Object.values(error.errors).map((val) => val.message);
         return next(
-          new CustomError(400, `Validation error: ${errors.join(". ")}`)
+          new CustomError(400, `Validation error: ${errors.join(". ")}`),
         );
       }
 
@@ -718,14 +732,14 @@ export const updateOrderPaidAmount = asyncErrorHandler(
       return next(
         new CustomError(
           500,
-          `Failed to update order paid amount: ${errorMessage}`
-        )
+          `Failed to update order paid amount: ${errorMessage}`,
+        ),
       );
     } finally {
       // Always end the session
       await session.endSession();
     }
-  }
+  },
 );
 
 export const getOrdersByStorefrontId = asyncErrorHandler(
@@ -754,7 +768,7 @@ export const getOrdersByStorefrontId = asyncErrorHandler(
         orders,
       },
     });
-  }
+  },
 );
 
 // Add order items to existing order
@@ -778,7 +792,7 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
   // Validate required fields - items array
   if (!items || !Array.isArray(items) || items.length === 0) {
     return next(
-      new CustomError(400, "Items array is required and must not be empty")
+      new CustomError(400, "Items array is required and must not be empty"),
     );
   }
 
@@ -787,13 +801,13 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
     const item = items[i];
     if (!item.inventoryId) {
       return next(
-        new CustomError(400, `Item at index ${i}: Inventory ID is required`)
+        new CustomError(400, `Item at index ${i}: Inventory ID is required`),
       );
     }
 
     if (!mongoose.Types.ObjectId.isValid(item.inventoryId)) {
       return next(
-        new CustomError(400, `Item at index ${i}: Invalid inventory ID format`)
+        new CustomError(400, `Item at index ${i}: Invalid inventory ID format`),
       );
     }
 
@@ -801,8 +815,8 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
       return next(
         new CustomError(
           400,
-          `Item at index ${i}: Quantity is required and must be at least 1`
-        )
+          `Item at index ${i}: Quantity is required and must be at least 1`,
+        ),
       );
     }
   }
@@ -849,13 +863,13 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
       if (order.orderStatus !== "completed") {
         throw new CustomError(
           400,
-          `Cannot add items to order with status '${order.orderStatus}'. Only completed orders can be modified.`
+          `Cannot add items to order with status '${order.orderStatus}'. Only completed orders can be modified.`,
         );
       }
 
       // 2. Get all unique inventory IDs to fetch in batch
       const inventoryIds = items.map(
-        (item) => new mongoose.Types.ObjectId(item.inventoryId)
+        (item) => new mongoose.Types.ObjectId(item.inventoryId),
       );
 
       // 3. Validate all inventory items exist and get their selling prices
@@ -866,11 +880,11 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
       if (inventoryItems.length !== inventoryIds.length) {
         const foundIds = inventoryItems.map((item) => item._id.toString());
         const missingIds = inventoryIds.filter(
-          (id) => !foundIds.includes(id.toString())
+          (id) => !foundIds.includes(id.toString()),
         );
         throw new CustomError(
           404,
-          `Inventory items not found: ${missingIds.join(", ")}`
+          `Inventory items not found: ${missingIds.join(", ")}`,
         );
       }
 
@@ -889,7 +903,7 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
         if (!inventoryItem) {
           throw new CustomError(
             404,
-            `Inventory item not found: ${item.inventoryId}`
+            `Inventory item not found: ${item.inventoryId}`,
           );
         }
 
@@ -899,14 +913,14 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
         ) {
           throw new CustomError(
             400,
-            `Product '${inventoryItem.productCode}' (${inventoryItem.productName}) does not have a selling price set`
+            `Product '${inventoryItem.productCode}' (${inventoryItem.productName}) does not have a selling price set`,
           );
         }
 
         if (inventoryItem.sellingPrice < 0) {
           throw new CustomError(
             400,
-            `Product '${inventoryItem.productCode}' (${inventoryItem.productName}) has an invalid selling price: ${inventoryItem.sellingPrice}`
+            `Product '${inventoryItem.productCode}' (${inventoryItem.productName}) has an invalid selling price: ${inventoryItem.sellingPrice}`,
           );
         }
 
@@ -917,13 +931,13 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
             storefrontId: order.storefrontId,
           },
           null,
-          { session }
+          { session },
         );
 
         if (!stockRecord) {
           throw new CustomError(
             404,
-            `Stock record not found for product '${inventoryItem.productCode}' in storefront`
+            `Stock record not found for product '${inventoryItem.productCode}' in storefront`,
           );
         }
 
@@ -932,7 +946,7 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
         if (availableQuantity < item.quantity) {
           throw new CustomError(
             400,
-            `Insufficient stock for product '${inventoryItem.productCode}' (${inventoryItem.productName}). Available: ${availableQuantity}, Requested: ${item.quantity}`
+            `Insufficient stock for product '${inventoryItem.productCode}' (${inventoryItem.productName}). Available: ${availableQuantity}, Requested: ${item.quantity}`,
           );
         }
 
@@ -950,7 +964,7 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
         // Check if item already exists in order
         const existingItemIndex = order.ordersProducts.findIndex(
           (orderItem) =>
-            orderItem.inventoryId.toString() === inventoryId.toString()
+            orderItem.inventoryId.toString() === inventoryId.toString(),
         );
 
         if (existingItemIndex !== -1) {
@@ -1003,7 +1017,7 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
       await order.populate("storefrontId", "locationName locationCode");
       await order.populate(
         "ordersProducts.inventoryId",
-        "productName productCode SKU"
+        "productName productCode SKU",
       );
       await order.populate("creditPersonId", "name phone");
       await order.populate("soldBy", "name role");
@@ -1025,7 +1039,7 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
     if (error.name === "ValidationError") {
       const errors = Object.values(error.errors).map((val) => val.message);
       return next(
-        new CustomError(400, `Validation error: ${errors.join(". ")}`)
+        new CustomError(400, `Validation error: ${errors.join(". ")}`),
       );
     }
 
@@ -1034,7 +1048,7 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
     const errorMessage =
       error?.message || String(error) || "Unknown error occurred";
     return next(
-      new CustomError(500, `Failed to add order items: ${errorMessage}`)
+      new CustomError(500, `Failed to add order items: ${errorMessage}`),
     );
   } finally {
     // Always end the session
@@ -1063,7 +1077,7 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
   // Validate required fields - items array
   if (!items || !Array.isArray(items) || items.length === 0) {
     return next(
-      new CustomError(400, "Items array is required and must not be empty")
+      new CustomError(400, "Items array is required and must not be empty"),
     );
   }
 
@@ -1072,13 +1086,13 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
     const item = items[i];
     if (!item.inventoryId) {
       return next(
-        new CustomError(400, `Item at index ${i}: Inventory ID is required`)
+        new CustomError(400, `Item at index ${i}: Inventory ID is required`),
       );
     }
 
     if (!mongoose.Types.ObjectId.isValid(item.inventoryId)) {
       return next(
-        new CustomError(400, `Item at index ${i}: Invalid inventory ID format`)
+        new CustomError(400, `Item at index ${i}: Invalid inventory ID format`),
       );
     }
 
@@ -1086,8 +1100,8 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
       return next(
         new CustomError(
           400,
-          `Item at index ${i}: Quantity is required and must be at least 1`
-        )
+          `Item at index ${i}: Quantity is required and must be at least 1`,
+        ),
       );
     }
   }
@@ -1134,7 +1148,7 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
       if (order.orderStatus !== "completed") {
         throw new CustomError(
           400,
-          `Cannot remove items from order with status '${order.orderStatus}'. Only completed orders can be modified.`
+          `Cannot remove items from order with status '${order.orderStatus}'. Only completed orders can be modified.`,
         );
       }
 
@@ -1144,13 +1158,13 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
         const inventoryId = new mongoose.Types.ObjectId(item.inventoryId);
         const existingItemIndex = order.ordersProducts.findIndex(
           (orderItem) =>
-            orderItem.inventoryId.toString() === inventoryId.toString()
+            orderItem.inventoryId.toString() === inventoryId.toString(),
         );
 
         if (existingItemIndex === -1) {
           throw new CustomError(
             404,
-            `Item with inventoryId '${item.inventoryId}' not found in order. Cannot remove item that doesn't exist.`
+            `Item with inventoryId '${item.inventoryId}' not found in order. Cannot remove item that doesn't exist.`,
           );
         }
 
@@ -1161,7 +1175,7 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
         if (item.quantity > existingItem.quantity) {
           throw new CustomError(
             400,
-            `Cannot remove ${item.quantity} items for inventoryId '${item.inventoryId}'. Only ${existingItem.quantity} items exist in order. Cannot remove more than available.`
+            `Cannot remove ${item.quantity} items for inventoryId '${item.inventoryId}'. Only ${existingItem.quantity} items exist in order. Cannot remove more than available.`,
           );
         }
 
@@ -1176,7 +1190,7 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
       // 3. Process all items - remove from order and restore stock
       // Process in reverse order to avoid index shifting issues when removing items
       const sortedItemsToProcess = itemsToProcess.sort(
-        (a, b) => b.existingItemIndex - a.existingItemIndex
+        (a, b) => b.existingItemIndex - a.existingItemIndex,
       );
 
       for (const itemToProcess of sortedItemsToProcess) {
@@ -1202,7 +1216,7 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
             storefrontId: order.storefrontId,
           },
           null,
-          { session }
+          { session },
         );
 
         if (!stockRecord) {
@@ -1218,7 +1232,7 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
                 lastUpdated: new Date(),
               },
             ],
-            { session }
+            { session },
           );
         } else {
           // Restore stock to existing record
@@ -1260,7 +1274,7 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
       await order.populate("storefrontId", "locationName locationCode");
       await order.populate(
         "ordersProducts.inventoryId",
-        "productName productCode SKU"
+        "productName productCode SKU",
       );
       await order.populate("creditPersonId", "name phone");
       await order.populate("soldBy", "name role");
@@ -1282,7 +1296,7 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
     if (error.name === "ValidationError") {
       const errors = Object.values(error.errors).map((val) => val.message);
       return next(
-        new CustomError(400, `Validation error: ${errors.join(". ")}`)
+        new CustomError(400, `Validation error: ${errors.join(". ")}`),
       );
     }
 
@@ -1291,7 +1305,7 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
     const errorMessage =
       error?.message || String(error) || "Unknown error occurred";
     return next(
-      new CustomError(500, `Failed to remove order items: ${errorMessage}`)
+      new CustomError(500, `Failed to remove order items: ${errorMessage}`),
     );
   } finally {
     // Always end the session
@@ -1320,8 +1334,8 @@ export const hardDeleteOrder = asyncErrorHandler(async (req, res, next) => {
     return next(
       new CustomError(
         400,
-        "Cannot hard delete order with order items. Order must have empty order items or empty array to be deleted."
-      )
+        "Cannot hard delete order with order items. Order must have empty order items or empty array to be deleted.",
+      ),
     );
   }
 
@@ -1335,8 +1349,8 @@ export const hardDeleteOrder = asyncErrorHandler(async (req, res, next) => {
     return next(
       new CustomError(
         400,
-        `Cannot hard delete order with credit records. This order has ${creditRecordsCount} credit record(s) associated with it.`
-      )
+        `Cannot hard delete order with credit records. This order has ${creditRecordsCount} credit record(s) associated with it.`,
+      ),
     );
   }
 

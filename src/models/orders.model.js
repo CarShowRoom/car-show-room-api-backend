@@ -107,7 +107,7 @@ const orderSchema = new mongoose.Schema(
     id: false,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
-  }
+  },
 );
 
 // Pre-save middleware to calculate extraChange if paidAmount or finalAmount changed
@@ -166,8 +166,9 @@ orderSchema.virtual("remainingBalance").get(function () {
 // Static method to generate order number
 // Format: ORD-YYYY-MM-DD-NNNNNN (e.g., ORD-2024-01-15-000001)
 // This format supports up to 999,999 orders per day
-orderSchema.statics.generateOrderNumber = async function () {
-  const now = new Date();
+// Accepts optional date parameter for manual order dates
+orderSchema.statics.generateOrderNumber = async function (date = null) {
+  const now = date ? new Date(date) : new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
@@ -176,7 +177,7 @@ orderSchema.statics.generateOrderNumber = async function () {
   // Find the latest order for this date (excluding deleted)
   const latestOrder = await this.findOne({
     orderNumber: new RegExp(
-      `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`
+      `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
     ),
     isDeleted: false,
   })
@@ -199,7 +200,7 @@ orderSchema.statics.generateOrderNumber = async function () {
   // Validate sequence doesn't exceed daily limit
   if (sequence > 999999) {
     throw new Error(
-      `Daily order limit reached. Maximum 999,999 orders per day allowed.`
+      `Daily order limit reached. Maximum 999,999 orders per day allowed.`,
     );
   }
 
