@@ -176,12 +176,10 @@ orderSchema.statics.generateOrderNumber = async function (date = null) {
 
   // Find the latest order for this date (excluding deleted)
   const latestOrder = await this.findOne({
-    orderNumber: new RegExp(
-      `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
-    ),
+    orderNumber: new RegExp(`^ORD-${year}-${month}-${day}-`),
     isDeleted: false,
   })
-    .sort({ createdAt: -1 })
+    .sort({ orderNumber: -1 })
     .select("orderNumber");
 
   let sequence = 1;
