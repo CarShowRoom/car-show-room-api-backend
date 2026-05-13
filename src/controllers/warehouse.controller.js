@@ -23,8 +23,8 @@ export const createWarehouseStock = asyncErrorHandler(
       return next(
         new CustomError(
           400,
-          "inventoryIds must be a non-empty array of inventory IDs"
-        )
+          "inventoryIds must be a non-empty array of inventory IDs",
+        ),
       );
     }
 
@@ -35,14 +35,14 @@ export const createWarehouseStock = asyncErrorHandler(
 
     // Validate all inventoryIds are valid MongoDB ObjectIds
     const invalidIds = inventoryIds.filter(
-      (id) => !mongoose.Types.ObjectId.isValid(id)
+      (id) => !mongoose.Types.ObjectId.isValid(id),
     );
     if (invalidIds.length > 0) {
       return next(
         new CustomError(
           400,
-          `Invalid inventory ID format(s): ${invalidIds.join(", ")}`
-        )
+          `Invalid inventory ID format(s): ${invalidIds.join(", ")}`,
+        ),
       );
     }
 
@@ -66,14 +66,14 @@ export const createWarehouseStock = asyncErrorHandler(
     });
     const foundInventoryIds = inventories.map((inv) => inv._id.toString());
     const missingInventoryIds = inventoryIds.filter(
-      (id) => !foundInventoryIds.includes(id.toString())
+      (id) => !foundInventoryIds.includes(id.toString()),
     );
     if (missingInventoryIds.length > 0) {
       return next(
         new CustomError(
           404,
-          `Inventory not found for ID(s): ${missingInventoryIds.join(", ")}`
-        )
+          `Inventory not found for ID(s): ${missingInventoryIds.join(", ")}`,
+        ),
       );
     }
 
@@ -84,10 +84,10 @@ export const createWarehouseStock = asyncErrorHandler(
     });
 
     const existingInventoryIds = existingRecords.map((record) =>
-      record.inventoryId.toString()
+      record.inventoryId.toString(),
     );
     const newInventoryIds = inventoryIds.filter(
-      (id) => !existingInventoryIds.includes(id.toString())
+      (id) => !existingInventoryIds.includes(id.toString()),
     );
 
     // Create new records for inventoryIds that don't exist
@@ -117,11 +117,11 @@ export const createWarehouseStock = asyncErrorHandler(
             if (existingRecord) {
               await existingRecord.populate(
                 "inventoryId",
-                "productName productCode"
+                "productName productCode",
               );
               await existingRecord.populate(
                 "warehouseId",
-                "locationName locationCode"
+                "locationName locationCode",
               );
               return { status: "duplicate", record: existingRecord };
             }
@@ -173,7 +173,7 @@ export const createWarehouseStock = asyncErrorHandler(
         },
       },
     });
-  }
+  },
 );
 
 export const getAllWarehouseStock = asyncErrorHandler(
@@ -196,71 +196,132 @@ export const getAllWarehouseStock = asyncErrorHandler(
       if (!mongoose.Types.ObjectId.isValid(warehouseId)) {
         return next(new CustomError(400, "Invalid warehouse ID format"));
       }
-      query.warehouseId = warehouseId;
+      query.warehouseId = new mongoose.Types.ObjectId(warehouseId);
     }
 
     if (inventoryId) {
       if (!mongoose.Types.ObjectId.isValid(inventoryId)) {
         return next(new CustomError(400, "Invalid inventory ID format"));
       }
-      query.inventoryId = inventoryId;
+      query.inventoryId = new mongoose.Types.ObjectId(inventoryId);
     }
 
     if (isLowStock !== undefined) {
       query.isLowStock = isLowStock === "true";
     }
 
+    // Build aggregation pipeline to filter by status (since status is in Inventory model)
+    const pipeline = [
+      { $match: query },
+      {
+        $lookup: {
+          from: "inventories",
+          localField: "inventoryId",
+          foreignField: "_id",
+          as: "inventoryId",
+        },
+      },
+      { $unwind: "$inventoryId" },
+      { $match: { "inventoryId.status": "active" } },
+      {
+        $lookup: {
+          from: "locationprofiles",
+          localField: "warehouseId",
+          foreignField: "_id",
+          as: "warehouseId",
+        },
+      },
+      { $unwind: "$warehouseId" },
+      {
+        $project: {
+          _id: 1,
+          quantity: 1,
+          isLowStock: 1,
+          lastUpdated: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          "inventoryId._id": 1,
+          "inventoryId.productName": 1,
+          "inventoryId.productCode": 1,
+          "inventoryId.SKU": 1,
+          "inventoryId.category": 1,
+          "inventoryId.buyingPrice": 1,
+          "inventoryId.sellingPrice": 1,
+          "inventoryId.barcode": 1,
+          "inventoryId.status": 1,
+          "warehouseId._id": 1,
+          "warehouseId.locationName": 1,
+          "warehouseId.locationCode": 1,
+        },
+      },
+    ];
+
+    // Build query chain using aggregate for status filtering and summary statistics
+    const summaryPipeline = [
+      ...pipeline,
+      {
+        $group: {
+          _id: null,
+          totalProducts: { $sum: 1 },
+          totalQuantity: { $sum: "$quantity" },
+          totalAmount: {
+            $sum: { $multiply: ["$quantity", "$inventoryId.sellingPrice"] },
+          },
+        },
+      },
+    ];
+
+    const summaryResult = await WarehouseStock.aggregate(summaryPipeline);
+    const summary =
+      summaryResult.length > 0
+        ? {
+            totalProducts: summaryResult[0].totalProducts,
+            totalQuantity: summaryResult[0].totalQuantity,
+            totalAmount: summaryResult[0].totalAmount,
+          }
+        : {
+            totalProducts: 0,
+            totalQuantity: 0,
+            totalAmount: 0,
+          };
+
     // Sort
     const sort = {};
     sort[sortBy] = sortOrder === "asc" ? 1 : -1;
+    pipeline.push({ $sort: sort });
 
-    // Build query chain
-    let queryChain = WarehouseStock.find(query)
-      .populate(
-        "inventoryId",
-        "productName productCode SKU category buyingPrice sellingPrice barcode"
-      )
-      .populate("warehouseId", "locationName locationCode locationAddress")
-      .sort(sort);
+    // Apply pagination
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 10;
+    const skip = (pageNum - 1) * limitNum;
 
-    // Apply pagination only if page or limit is provided
     const usePagination = page !== undefined || limit !== undefined;
-    let paginationInfo = null;
+    if (usePagination) {
+      pipeline.push({ $skip: skip });
+      pipeline.push({ $limit: limitNum });
+    }
+
+    // Execute aggregate query
+    const stock = await WarehouseStock.aggregate(pipeline);
+
+    const response = {
+      success: true,
+      message: "Warehouse stock retrieved successfully (Active products only)",
+      summary,
+      data: stock,
+    };
 
     if (usePagination) {
-      const pageNum = parseInt(page) || 1;
-      const limitNum = parseInt(limit) || 10;
-      const skip = (pageNum - 1) * limitNum;
-
-      queryChain = queryChain.skip(skip).limit(limitNum);
-
-      // Get total count for pagination
-      const total = await WarehouseStock.countDocuments(query);
-
-      paginationInfo = {
+      response.pagination = {
         currentPage: pageNum,
-        totalPages: Math.ceil(total / limitNum),
-        totalItems: total,
+        totalPages: Math.ceil(summary.totalProducts / limitNum),
+        totalItems: summary.totalProducts,
         itemsPerPage: limitNum,
       };
     }
 
-    // Execute query
-    const stock = await queryChain;
-
-    const response = {
-      success: true,
-      message: "Warehouse stock retrieved successfully",
-      data: stock,
-    };
-
-    // Only include pagination info if pagination was applied
-    if (paginationInfo) {
-      response.pagination = paginationInfo;
-    }
-
     res.status(200).json(response);
-  }
+  },
 );
 
 export const getWarehouseStockById = asyncErrorHandler(
@@ -275,7 +336,7 @@ export const getWarehouseStockById = asyncErrorHandler(
     const stock = await WarehouseStock.findById(id)
       .populate(
         "inventoryId",
-        "productName productCode SKU category buyingPrice sellingPrice barcode"
+        "productName productCode SKU category buyingPrice sellingPrice barcode status",
       )
       .populate("warehouseId", "locationName locationCode locationAddress");
 
@@ -288,7 +349,7 @@ export const getWarehouseStockById = asyncErrorHandler(
       message: "Warehouse stock retrieved successfully",
       data: stock,
     });
-  }
+  },
 );
 
 // Update warehouse stock quantity with ACID properties
@@ -312,8 +373,8 @@ export const updateWarehouseStockQuantity = asyncErrorHandler(
       return next(
         new CustomError(
           400,
-          "A valid non-zero numeric 'quantityChange' is required. Use positive number to add, negative number to subtract."
-        )
+          "A valid non-zero numeric 'quantityChange' is required. Use positive number to add, negative number to subtract.",
+        ),
       );
     }
 
@@ -321,7 +382,7 @@ export const updateWarehouseStockQuantity = asyncErrorHandler(
     const adminId = req.user?._id;
     if (!adminId) {
       return next(
-        new CustomError(401, "Authentication required. Admin ID not found.")
+        new CustomError(401, "Authentication required. Admin ID not found."),
       );
     }
 
@@ -367,8 +428,8 @@ export const updateWarehouseStockQuantity = asyncErrorHandler(
         return next(
           new CustomError(
             400,
-            `Cannot update stock quantity. Current quantity: ${beforeQuantity}, requested change: ${quantityChange}. This would result in a negative quantity (${afterQuantity}).`
-          )
+            `Cannot update stock quantity. Current quantity: ${beforeQuantity}, requested change: ${quantityChange}. This would result in a negative quantity (${afterQuantity}).`,
+          ),
         );
       }
 
@@ -379,9 +440,12 @@ export const updateWarehouseStockQuantity = asyncErrorHandler(
           $inc: { quantity: quantityChange },
           $set: { lastUpdated: new Date() },
         },
-        { new: true, runValidators: true, session }
+        { new: true, runValidators: true, session },
       )
-        .populate("inventoryId", "productName productCode SKU category barcode")
+        .populate(
+          "inventoryId",
+          "productName productCode SKU category barcode status",
+        )
         .populate("warehouseId", "locationName locationCode");
 
       // Create audit log entry
@@ -438,9 +502,9 @@ export const updateWarehouseStockQuantity = asyncErrorHandler(
       return next(
         new CustomError(
           500,
-          `Failed to update warehouse stock quantity: ${error.message}`
-        )
+          `Failed to update warehouse stock quantity: ${error.message}`,
+        ),
       );
     }
-  }
+  },
 );
