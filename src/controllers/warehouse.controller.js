@@ -185,6 +185,7 @@ export const getAllWarehouseStock = asyncErrorHandler(
       inventoryId,
       isLowStock,
       search,
+      category,
       sortBy = "createdAt",
       sortOrder = "desc",
     } = req.query;
@@ -223,6 +224,13 @@ export const getAllWarehouseStock = asyncErrorHandler(
       },
       { $unwind: "$inventoryId" },
       { $match: { "inventoryId.status": "active" } },
+    ];
+
+    if (category) {
+      pipeline.push({ $match: { "inventoryId.category": category } });
+    }
+
+    pipeline.push(
       {
         $lookup: {
           from: "locationprofiles",
@@ -254,7 +262,7 @@ export const getAllWarehouseStock = asyncErrorHandler(
           "warehouseId.locationCode": 1,
         },
       },
-    ];
+    );
 
     // Build query chain using aggregate for status filtering and summary statistics
     const summaryPipeline = [
