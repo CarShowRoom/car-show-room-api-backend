@@ -6,6 +6,7 @@ import {
   getInventoryById,
   updateInventory,
   importInventoryFromExcel,
+  getAllCategories,
 } from "../controllers/inventory.controller.js";
 import { protect } from "../controllers/administrationPolicy.controller.js";
 import { permissionGranted } from "../controllers/administrationPolicy.controller.js";
@@ -41,6 +42,14 @@ router.post(
   permissionGranted("owner", "admin"),
   upload.single("file"),
   importInventoryFromExcel,
+);
+
+// Get all unique categories
+router.get(
+  "/inventory/categories",
+  protect,
+  permissionGranted("owner", "admin"),
+  getAllCategories,
 );
 
 // Create new inventory item

@@ -86,9 +86,6 @@ export const getAllInventory = asyncErrorHandler(async (req, res, next) => {
     query.$or = [
       { productName: { $regex: search, $options: "i" } },
       { productCode: { $regex: search, $options: "i" } },
-      { SKU: { $regex: search, $options: "i" } },
-      { barcode: { $regex: search, $options: "i" } },
-      { note: { $regex: search, $options: "i" } },
     ];
   }
 
@@ -573,3 +570,14 @@ export const importInventoryFromExcel = asyncErrorHandler(
     });
   },
 );
+
+// Get all unique categories from inventory
+export const getAllCategories = asyncErrorHandler(async (req, res, next) => {
+  const categories = await Inventory.distinct("category");
+
+  res.status(200).json({
+    success: true,
+    message: "Categories retrieved successfully",
+    data: categories.filter(Boolean), // Remove any null or undefined values
+  });
+});

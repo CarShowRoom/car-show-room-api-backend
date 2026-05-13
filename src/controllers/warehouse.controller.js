@@ -264,6 +264,17 @@ export const getAllWarehouseStock = asyncErrorHandler(
       },
     );
 
+    if (search) {
+      pipeline.push({
+        $match: {
+          $or: [
+            { "inventoryId.productName": { $regex: search, $options: "i" } },
+            { "inventoryId.productCode": { $regex: search, $options: "i" } },
+          ],
+        },
+      });
+    }
+
     // Build query chain using aggregate for status filtering and summary statistics
     const summaryPipeline = [
       ...pipeline,
