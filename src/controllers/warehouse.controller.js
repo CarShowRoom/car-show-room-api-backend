@@ -270,6 +270,7 @@ export const getAllWarehouseStock = asyncErrorHandler(
           $or: [
             { "inventoryId.productName": { $regex: search, $options: "i" } },
             { "inventoryId.productCode": { $regex: search, $options: "i" } },
+            { "inventoryId.barcode": { $regex: search, $options: "i" } },
           ],
         },
       });

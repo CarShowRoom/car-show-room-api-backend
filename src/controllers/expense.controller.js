@@ -23,8 +23,8 @@ export const createExpense = asyncErrorHandler(async (req, res, next) => {
     return next(
       new CustomError(
         400,
-        "Location ID is required. Please provide locationId in the request body."
-      )
+        "Location ID is required. Please provide locationId in the request body.",
+      ),
     );
   }
 
@@ -76,12 +76,18 @@ export const getExpenseById = asyncErrorHandler(async (req, res, next) => {
 export const getExpenses = asyncErrorHandler(async (req, res, next) => {
   // Build query filter
   const filter = {};
-  const { softDeleted } = req.query;
+  const {
+    softDeleted,
+    page,
+    limit,
+    sortBy = "date",
+    sortOrder = "desc",
+    category,
+    locationId,
+  } = req.query;
 
   // Filter by softDeleted status if provided
-  // Supports: ?softDeleted=true, ?softDeleted=false, or omit to default to false
   if (softDeleted !== undefined) {
-    // Convert string "true"/"false" to boolean
     if (softDeleted === "true" || softDeleted === true) {
       filter.softDeleted = true;
     } else if (softDeleted === "false" || softDeleted === false) {
@@ -90,30 +96,56 @@ export const getExpenses = asyncErrorHandler(async (req, res, next) => {
       return next(
         new CustomError(
           400,
-          "Invalid softDeleted value. Must be 'true' or 'false'."
-        )
+          "Invalid softDeleted value. Must be 'true' or 'false'.",
+        ),
       );
     }
   } else {
-    // Default: exclude soft deleted expenses if softDeleted is not specified
     filter.softDeleted = false;
   }
 
+  // Filter by category if provided
+  if (category) {
+    filter.category = category;
+  }
+
+  // Filter by locationId if provided
+  if (locationId) {
+    if (!mongoose.Types.ObjectId.isValid(locationId)) {
+      return next(new CustomError(400, "Invalid location ID format"));
+    }
+    filter.locationId = locationId;
+  }
+
   // Add date range filter using dateFilter utility
-  // Filter by the 'date' field (expense date) rather than createdAt
   try {
     const dateFilter = createDateFilter(req.query, "date", false);
     Object.assign(filter, dateFilter);
   } catch (error) {
-    // If it's a CustomError, pass it to error handler
     if (error instanceof CustomError) {
       return next(error);
     }
-    // For other errors, wrap and pass
     return next(new CustomError(400, error.message || "Invalid date filter"));
   }
 
-  const expenses = await Expense.find(filter)
+  // Sort
+  const sort = {};
+  sort[sortBy] = sortOrder === "asc" ? 1 : -1;
+
+  // Pagination
+  const pageNum = parseInt(page) || 1;
+  const limitNum = parseInt(limit) || 10;
+  const skip = (pageNum - 1) * limitNum;
+
+  // Execute query with pagination if requested
+  const usePagination = page !== undefined || limit !== undefined;
+  let queryChain = Expense.find(filter).sort(sort);
+
+  if (usePagination) {
+    queryChain = queryChain.skip(skip).limit(limitNum);
+  }
+
+  const expenses = await queryChain
     .populate({
       path: "locationId",
       select: "type locationName locationCode locationAddress",
@@ -122,11 +154,28 @@ export const getExpenses = asyncErrorHandler(async (req, res, next) => {
       path: "adminId",
       select: "name role",
     });
-  res.status(200).json({
+
+  // Get total count for pagination info
+  const total = await Expense.countDocuments(filter);
+
+  const response = {
     success: true,
     message: "Expenses fetched successfully.",
     data: expenses,
-  });
+  };
+
+  if (usePagination) {
+    response.pagination = {
+      currentPage: pageNum,
+      totalPages: Math.ceil(total / limitNum),
+      totalItems: total,
+      itemsPerPage: limitNum,
+    };
+  } else {
+    response.totalItems = total;
+  }
+
+  res.status(200).json(response);
 });
 
 export const updateExpense = asyncErrorHandler(async (req, res, next) => {
@@ -146,7 +195,7 @@ export const updateExpense = asyncErrorHandler(async (req, res, next) => {
   const expense = await Expense.findByIdAndUpdate(
     id,
     { category, amount, date, notes, adminId },
-    { new: true, runValidators: true }
+    { new: true, runValidators: true },
   )
     .populate({
       path: "locationId",
@@ -182,7 +231,7 @@ export const softDeleteExpense = asyncErrorHandler(async (req, res, next) => {
   const softDeletedExpense = await Expense.findByIdAndUpdate(
     id,
     { $set: { softDeleted: true, deletedAt: new Date() } },
-    { new: true, runValidators: true }
+    { new: true, runValidators: true },
   )
     .populate({
       path: "locationId",
@@ -217,7 +266,7 @@ export const restoreExpense = asyncErrorHandler(async (req, res, next) => {
   const restoredExpense = await Expense.findByIdAndUpdate(
     id,
     { $set: { softDeleted: false, deletedAt: null } },
-    { new: true, runValidators: true }
+    { new: true, runValidators: true },
   )
     .populate({
       path: "locationId",
