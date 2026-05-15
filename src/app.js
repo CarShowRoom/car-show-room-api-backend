@@ -27,12 +27,13 @@ import adminRouter from "./routes/admin.route.js";
 import expenseRouter from "./routes/expense.route.js";
 import stockAuditLogRouter from "./routes/stockAuditLog.route.js";
 import saleReportRouter from "./routes/saleReport.route.js";
+import shopSettingRouter from "./routes/shopSetting.route.js";
 const app = express();
 app.use(
   helmet({
     contentSecurityPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" },
-  })
+  }),
 );
 
 app.use(configureCors());
@@ -62,11 +63,12 @@ app.use("/api/v1", adminRouter);
 app.use("/api/v1", expenseRouter);
 app.use("/api/v1", stockAuditLogRouter);
 app.use("/api/v1", saleReportRouter);
+app.use("/api/v1", shopSettingRouter);
 //404-Error Handler
 app.all("/*any", (req, res, next) => {
   const err = new CustomError(
     404,
-    `Can't find ${req.originalUrl} on the server!`
+    `Can't find ${req.originalUrl} on the server!`,
   );
   next(err);
 });
