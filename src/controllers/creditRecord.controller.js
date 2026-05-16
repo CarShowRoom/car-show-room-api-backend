@@ -207,8 +207,31 @@ export const getCreditRecordsByOrderId = asyncErrorHandler(
     );
 
     // Calculate remaining balance
-    const totalPaid = (order.paidAmount || 0) + totalCreditPayments;
+    // Note: order.paidAmount already includes all credit payments (updated on each createCreditPayment)
+    // So totalPaid = order.paidAmount (NOT order.paidAmount + totalCreditPayments)
+    const totalPaid = order.paidAmount || 0;
+    const initialPaidAmount = Math.max(0, totalPaid - totalCreditPayments);
     const remainingBalance = Math.max(0, order.finalAmount - totalPaid);
+
+    // Add remaining balance after each payment to individual records
+    // Records are sorted newest first, so process in reverse for running total
+    const orderFinalAmount = order.finalAmount;
+    let runningPaidAmount = initialPaidAmount;
+    const recordsWithBalance = creditRecords.map((record) => {
+      const recordObj = record.toObject();
+      // Calculate running paid amount up to and including this record
+      // Process reverse-order since records are newest-first
+      return recordObj;
+    });
+
+    // Process from oldest (end) to newest (start) to accumulate running total
+    for (let i = recordsWithBalance.length - 1; i >= 0; i--) {
+      runningPaidAmount += recordsWithBalance[i].paidAmount || 0;
+      recordsWithBalance[i].remainingBalanceAfterPayment = Math.max(
+        0,
+        orderFinalAmount - runningPaidAmount
+      );
+    }
 
     res.status(200).json({
       success: true,
@@ -217,13 +240,13 @@ export const getCreditRecordsByOrderId = asyncErrorHandler(
         order: {
           orderNumber: order.orderNumber,
           finalAmount: order.finalAmount,
-          initialPaidAmount: order.paidAmount,
+          initialPaidAmount,
           totalPaidAmount: totalPaid,
-          remainingBalance: remainingBalance,
+          remainingBalance,
         },
         creditRecords: {
-          count: creditRecords.length,
-          records: creditRecords,
+          count: recordsWithBalance.length,
+          records: recordsWithBalance,
         },
       },
     });
@@ -453,8 +476,9 @@ export const getCreditRecordsByCreditPersonId = asyncErrorHandler(
     const creditRecords = await CreditRecord.find(query)
       .populate({
         path: "orderId",
-        select: "orderNumber finalAmount paymentType paidAmount createdAt",
+        select: "orderNumber",
       })
+      .populate("addedBy", "name role")
       .sort({ paymentDate: -1 })
       .skip(skip)
       .limit(limitNum);
@@ -474,11 +498,80 @@ export const getCreditRecordsByCreditPersonId = asyncErrorHandler(
     // Note: order.paidAmount already includes all credit payments (updated when each credit payment is recorded)
     // So we can use it directly as the total paid amount
     let totalOutstanding = 0;
+    const orderMap = new Map();
     for (const order of orders) {
       const orderTotalPaid = order.paidAmount || 0;
       const orderOutstanding = order.finalAmount - orderTotalPaid;
       totalOutstanding += Math.max(0, orderOutstanding);
+      orderMap.set(order._id.toString(), {
+        finalAmount: order.finalAmount,
+        paidAmount: order.paidAmount,
+      });
     }
+
+    // Group paginated credit records by order and calculate remainingBalanceAfterPayment per record
+    const recordsByOrder = new Map();
+    creditRecords.forEach((record) => {
+      const orderIdStr = record.orderId._id.toString();
+      if (!recordsByOrder.has(orderIdStr)) {
+        recordsByOrder.set(orderIdStr, []);
+      }
+      recordsByOrder.get(orderIdStr).push(record);
+    });
+
+    const creditRecordsWithBalance = [];
+    recordsByOrder.forEach((records, orderIdStr) => {
+      const orderData = orderMap.get(orderIdStr);
+      if (!orderData) {
+        records.forEach((r) => creditRecordsWithBalance.push(r.toObject()));
+        return;
+      }
+
+      const creditPaymentsSum = records.reduce(
+        (sum, r) => sum + (r.paidAmount || 0),
+        0
+      );
+      const initialPaidAmount = Math.max(
+        0,
+        orderData.paidAmount - creditPaymentsSum
+      );
+
+      let runningPaid = initialPaidAmount;
+      // Records are per-order newest-first, process from end (oldest) to start (newest)
+      for (let i = records.length - 1; i >= 0; i--) {
+        runningPaid += records[i].paidAmount || 0;
+        const recordObj = records[i].toObject();
+        recordObj.remainingBalanceAfterPayment = Math.max(
+          0,
+          orderData.finalAmount - runningPaid
+        );
+        // Only keep _id and orderNumber in orderId
+        recordObj.orderId = {
+          _id: records[i].orderId._id,
+          orderNumber: records[i].orderId.orderNumber,
+        };
+        // Format addedBy with name and role
+        if (records[i].addedBy) {
+          recordObj.addedBy = {
+            _id: records[i].addedBy._id,
+            name: records[i].addedBy.name,
+            role: records[i].addedBy.role,
+          };
+        }
+        // Remove internal fields from record
+        delete recordObj.isDeleted;
+        delete recordObj.deletedAt;
+        delete recordObj.createdAt;
+        delete recordObj.updatedAt;
+        delete recordObj.__v;
+        creditRecordsWithBalance.push(recordObj);
+      }
+    });
+
+    // Sort by paymentDate newest-first to match original order
+    creditRecordsWithBalance.sort(
+      (a, b) => new Date(b.paymentDate) - new Date(a.paymentDate)
+    );
 
     res.status(200).json({
       success: true,
@@ -494,8 +587,8 @@ export const getCreditRecordsByCreditPersonId = asyncErrorHandler(
           orderNumber: order.orderNumber,
         })),
         creditRecords: {
-          count: creditRecords.length,
-          records: creditRecords,
+          count: creditRecordsWithBalance.length,
+          records: creditRecordsWithBalance,
         },
         summary: {
           totalCreditRecords: total,
