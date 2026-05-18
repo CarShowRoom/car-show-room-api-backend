@@ -128,6 +128,32 @@ const inventorySchema = new mongoose.Schema(
         trim: true,
       },
     ],
+    images: [
+      {
+        url: {
+          type: String,
+        },
+        key: {
+          type: String,
+        },
+        isPrimary: {
+          type: Boolean,
+          default: false,
+        },
+      },
+    ],
+    wholesalePrices: [
+      {
+        quantity: {
+          type: Number,
+          min: [1, "Quantity must be at least 1"],
+        },
+        price: {
+          type: Number,
+          min: [0, "Price cannot be negative"],
+        },
+      },
+    ],
     note: {
       type: String,
       trim: true,
@@ -170,24 +196,16 @@ inventorySchema.virtual("profitAmount").get(function () {
   return this.sellingPrice - this.buyingPrice;
 });
 
-// Pre-save middleware to ensure only one primary image
-// TODO: Uncomment when images field is added
-// inventorySchema.pre("save", function (next) {
-//   if (this.images && this.images.length > 0) {
-//     const primaryImages = this.images.filter((img) => img.isPrimary);
-//     if (primaryImages.length > 1) {
-//       // Keep only the first one as primary
-//       this.images.forEach((img, index) => {
-//         if (index > 0) img.isPrimary = false;
-//       });
-//     }
-//     if (primaryImages.length === 0) {
-//       // Set first image as primary if none is set
-//       this.images[0].isPrimary = true;
-//     }
-//   }
-//   next();
-// });
+// Pre-save middleware to validate wholesale prices have unique quantities
+inventorySchema.pre("save", function () {
+  if (this.wholesalePrices && this.wholesalePrices.length > 0) {
+    const quantities = this.wholesalePrices.map((wp) => wp.quantity);
+    const uniqueQuantities = new Set(quantities);
+    if (quantities.length !== uniqueQuantities.size) {
+      throw new Error("Duplicate quantities are not allowed in wholesale prices");
+    }
+  }
+});
 
 const Inventory = mongoose.model("Inventory", inventorySchema);
 export default Inventory;

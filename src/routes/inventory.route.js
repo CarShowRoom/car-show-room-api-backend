@@ -7,6 +7,10 @@ import {
   updateInventory,
   importInventoryFromExcel,
   getAllCategories,
+  inventoryMulter,
+  uploadInventoryImages,
+  deleteInventoryImage,
+  setPrimaryInventoryImage,
 } from "../controllers/inventory.controller.js";
 import { protect } from "../controllers/administrationPolicy.controller.js";
 import { permissionGranted } from "../controllers/administrationPolicy.controller.js";
@@ -52,11 +56,12 @@ router.get(
   getAllCategories,
 );
 
-// Create new inventory item
+// Create new inventory item (multipart: fields + up to 5 images)
 router.post(
   "/inventory",
   protect,
   permissionGranted("owner", "admin"),
+  inventoryMulter.array("images", 5),
   createInventory,
 );
 
@@ -82,6 +87,30 @@ router.patch(
   protect,
   permissionGranted("owner"),
   updateInventory,
+);
+
+// Upload images to inventory item (max 5)
+router.post(
+  "/inventory/:id/images",
+  protect,
+  permissionGranted("owner", "admin"),
+  uploadInventoryImages,
+);
+
+// Delete a single image from inventory item
+router.delete(
+  "/inventory/:id/images/:imageId",
+  protect,
+  permissionGranted("owner", "admin"),
+  deleteInventoryImage,
+);
+
+// Set primary image for inventory item
+router.patch(
+  "/inventory/:id/images/:imageId/primary",
+  protect,
+  permissionGranted("owner", "admin"),
+  setPrimaryInventoryImage,
 );
 
 export default router;
