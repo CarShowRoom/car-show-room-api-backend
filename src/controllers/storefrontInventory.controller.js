@@ -4,10 +4,17 @@ import LocationProfile from "../models/locationProfile.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import mongoose from "mongoose";
+import XLSX from "xlsx";
 import {
   createStockAuditLog,
   determineActionType,
 } from "../services/stockAuditLog.service.js";
+
+const parseExcelRowProductCode = (row) =>
+  row.productCode || row.product_code || row["Product Code"];
+
+const parseExcelRowQuantity = (row) =>
+  row.quantity ?? row.qty ?? row["Quantity"] ?? row["Qty"];
 
 export const createStorefrontInventory = asyncErrorHandler(
   async (req, res, next) => {
@@ -253,6 +260,7 @@ export const getAllStorefrontInventory = asyncErrorHandler(
         $project: {
           _id: 1,
           quantity: 1,
+          availableQuantity: "$quantity",
           isLowStock: 1,
           lastUpdated: 1,
           createdAt: 1,
@@ -540,5 +548,168 @@ export const updateStorefrontInventoryQuantity = asyncErrorHandler(
         ),
       );
     }
+  },
+);
+
+// Bulk add storefront inventory quantities from Excel (partial success per row)
+export const importStorefrontInventoryFromExcel = asyncErrorHandler(
+  async (req, res, next) => {
+    if (!req.file) {
+      return next(new CustomError(400, "Please upload an Excel file"));
+    }
+
+    const storefrontId = req.body.storefrontId || req.query.storefrontId;
+    if (!storefrontId) {
+      return next(new CustomError(400, "storefrontId is required"));
+    }
+    if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
+      return next(new CustomError(400, "Invalid storefront ID format"));
+    }
+
+    const adminId = req.user?._id;
+    if (!adminId) {
+      return next(
+        new CustomError(401, "Authentication required. Admin ID not found."),
+      );
+    }
+
+    const storefront = await LocationProfile.findOne({
+      _id: storefrontId,
+      type: "storefront",
+    });
+    if (!storefront) {
+      return next(new CustomError(404, "Storefront not found"));
+    }
+    if (storefront.isDeleted) {
+      return next(new CustomError(404, "Storefront is deleted"));
+    }
+
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(worksheet);
+
+    if (rows.length === 0) {
+      return next(new CustomError(400, "Excel file is empty"));
+    }
+
+    const results = {
+      total: rows.length,
+      success: 0,
+      skipped: 0,
+      failed: 0,
+      updated: [],
+      skippedRows: [],
+      errors: [],
+    };
+
+    const reason = req.body.reason || "Excel bulk import";
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 2;
+
+      try {
+        const productCodeRaw = parseExcelRowProductCode(row);
+        const quantityRaw = parseExcelRowQuantity(row);
+
+        if (!productCodeRaw) {
+          throw new Error("Product code is required");
+        }
+
+        if (
+          quantityRaw === undefined ||
+          quantityRaw === null ||
+          quantityRaw === ""
+        ) {
+          throw new Error("Quantity is required");
+        }
+
+        const quantityToAdd = Number(quantityRaw);
+        if (
+          !Number.isFinite(quantityToAdd) ||
+          quantityToAdd <= 0 ||
+          !Number.isInteger(quantityToAdd)
+        ) {
+          throw new Error("Quantity must be a positive whole number");
+        }
+
+        const productCode = String(productCodeRaw).trim().toUpperCase();
+        const inventory = await Inventory.findOne({ productCode });
+
+        if (!inventory) {
+          results.skipped++;
+          results.skippedRows.push({
+            row: rowNum,
+            productCode,
+            message: `Product code '${productCode}' not found — skipped`,
+          });
+          continue;
+        }
+
+        let stock = await StorefrontInventory.findOne({
+          inventoryId: inventory._id,
+          storefrontId,
+        });
+
+        const beforeQuantity = stock?.quantity ?? 0;
+        const isNewRecord = !stock;
+
+        if (!stock) {
+          stock = await StorefrontInventory.create({
+            inventoryId: inventory._id,
+            storefrontId,
+            quantity: 0,
+          });
+        }
+
+        const updatedStock = await StorefrontInventory.findByIdAndUpdate(
+          stock._id,
+          {
+            $inc: { quantity: quantityToAdd },
+            $set: { lastUpdated: new Date() },
+          },
+          { new: true, runValidators: true },
+        );
+
+        const afterQuantity = updatedStock.quantity;
+        const action = determineActionType(quantityToAdd, isNewRecord);
+
+        await createStockAuditLog({
+          inventoryId: inventory._id,
+          adminId,
+          locationId: storefrontId,
+          locationType: "storefront",
+          stockRecordId: stock._id,
+          beforeQuantity,
+          afterQuantity,
+          quantityChange: quantityToAdd,
+          action,
+          reason,
+        });
+
+        results.success++;
+        results.updated.push({
+          row: rowNum,
+          productCode,
+          productName: inventory.productName,
+          quantityAdded: quantityToAdd,
+          previousQuantity: beforeQuantity,
+          newQuantity: afterQuantity,
+        });
+      } catch (error) {
+        results.failed++;
+        results.errors.push({
+          row: rowNum,
+          message: error.message,
+        });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Import completed: ${results.success} updated, ${results.skipped} skipped, ${results.failed} failed out of ${results.total}`,
+      data: results,
+    });
   },
 );
