@@ -10,7 +10,7 @@ import { createDateFilter } from "../utils/dateFilter.utils.js";
 
 export const getSaleReportByStorefrontId = asyncErrorHandler(
   async (req, res, next) => {
-    const { storefrontId, startDate, endDate } = req.query;
+    const { storefrontId, saleType, startDate, endDate } = req.query;
 
     let storefront = null;
 
@@ -42,6 +42,22 @@ export const getSaleReportByStorefrontId = asyncErrorHandler(
     // Add storefrontId filter only if provided
     if (storefrontId) {
       filter.storefrontId = new mongoose.Types.ObjectId(storefrontId);
+    }
+
+    // Add saleType filter (default to "storefront" for backward compatibility)
+    if (saleType !== undefined && saleType !== "") {
+      const validSaleTypes = ["storefront", "direct-sale"];
+      if (!validSaleTypes.includes(saleType)) {
+        return next(
+          new CustomError(
+            400,
+            `Invalid sale type. Allowed values: ${validSaleTypes.join(", ")}`,
+          ),
+        );
+      }
+      filter.saleType = saleType;
+    } else {
+      filter.saleType = "storefront";
     }
 
     // Add date range filter using dateFilter utility
@@ -142,7 +158,7 @@ export const getSaleReportByStorefrontId = asyncErrorHandler(
 // Get payment method breakdown report for a specific storefront or all storefronts (paid orders only)
 export const getPaymentMethodReportByStorefrontId = asyncErrorHandler(
   async (req, res, next) => {
-    const { storefrontId } = req.query;
+    const { storefrontId, saleType } = req.query;
 
     let storefront = null;
 
@@ -175,6 +191,22 @@ export const getPaymentMethodReportByStorefrontId = asyncErrorHandler(
     // Add storefrontId filter only if provided
     if (storefrontId) {
       filter.storefrontId = new mongoose.Types.ObjectId(storefrontId);
+    }
+
+    // Add saleType filter (default to "storefront" for backward compatibility)
+    if (saleType !== undefined && saleType !== "") {
+      const validSaleTypes = ["storefront", "direct-sale"];
+      if (!validSaleTypes.includes(saleType)) {
+        return next(
+          new CustomError(
+            400,
+            `Invalid sale type. Allowed values: ${validSaleTypes.join(", ")}`,
+          ),
+        );
+      }
+      filter.saleType = saleType;
+    } else {
+      filter.saleType = "storefront";
     }
 
     // Add date range filter using dateFilter utility
@@ -672,7 +704,7 @@ export const getCreditSaleReportByStorefrontId = asyncErrorHandler(
 // Get product/stock sales statistics for a specific storefront or all storefronts
 export const getProductSalesReportByStorefrontId = asyncErrorHandler(
   async (req, res, next) => {
-    const { storefrontId } = req.query;
+    const { storefrontId, saleType } = req.query;
 
     let storefront = null;
 
@@ -704,6 +736,22 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
     // Add storefrontId filter only if provided
     if (storefrontId) {
       filter.storefrontId = new mongoose.Types.ObjectId(storefrontId);
+    }
+
+    // Add saleType filter (default to "storefront" for backward compatibility)
+    if (saleType !== undefined && saleType !== "") {
+      const validSaleTypes = ["storefront", "direct-sale"];
+      if (!validSaleTypes.includes(saleType)) {
+        return next(
+          new CustomError(
+            400,
+            `Invalid sale type. Allowed values: ${validSaleTypes.join(", ")}`,
+          ),
+        );
+      }
+      filter.saleType = saleType;
+    } else {
+      filter.saleType = "storefront";
     }
 
     // Add date range filter using dateFilter utility
@@ -1290,3 +1338,5 @@ export const getSaleProductsAnalyticsByCreditPerson = asyncErrorHandler(
     });
   }
 );
+
+

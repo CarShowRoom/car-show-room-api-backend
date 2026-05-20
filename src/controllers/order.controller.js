@@ -12,7 +12,11 @@ import { createDateFilter } from "../utils/dateFilter.utils.js";
 // Create new order with ACID properties and stock deduction
 export const createOrder = asyncErrorHandler(async (req, res, next) => {
   const {
+    saleType = "storefront",
     storefrontId,
+    customerName,
+    customerPhone,
+    note,
     ordersProducts,
     subTotal,
     tax = 0,
@@ -26,13 +30,28 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
   } = req.body;
   const soldBy = req.user._id;
 
-  // Validate required fields
-  if (!storefrontId) {
-    return next(new CustomError(400, "Storefront ID is required"));
+  // Validate saleType
+  const validSaleTypes = ["storefront", "direct-sale"];
+  if (!validSaleTypes.includes(saleType)) {
+    return next(
+      new CustomError(
+        400,
+        `Invalid sale type. Allowed values: ${validSaleTypes.join(", ")}`,
+      ),
+    );
   }
 
-  if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
-    return next(new CustomError(400, "Invalid storefront ID format"));
+  const isDirectSale = saleType === "direct-sale";
+
+  // Validate storefrontId (required only for storefront sales)
+  if (!isDirectSale) {
+    if (!storefrontId) {
+      return next(new CustomError(400, "Storefront ID is required"));
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(storefrontId)) {
+      return next(new CustomError(400, "Invalid storefront ID format"));
+    }
   }
 
   if (
@@ -146,21 +165,23 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
 
         // Start transaction
         await session.withTransaction(async () => {
-          // 1. Validate storefront exists and is not deleted
-          const storefront = await LocationProfile.findOne({
-            _id: storefrontId,
-            type: "storefront",
-          }).session(session);
+          // 1. Validate storefront exists and is not deleted (only for storefront sales)
+          if (!isDirectSale) {
+            const storefront = await LocationProfile.findOne({
+              _id: storefrontId,
+              type: "storefront",
+            }).session(session);
 
-          if (!storefront) {
-            throw new CustomError(404, "Storefront not found");
-          }
+            if (!storefront) {
+              throw new CustomError(404, "Storefront not found");
+            }
 
-          if (storefront.isDeleted) {
-            throw new CustomError(
-              400,
-              "Cannot create order for deleted storefront",
-            );
+            if (storefront.isDeleted) {
+              throw new CustomError(
+                400,
+                "Cannot create order for deleted storefront",
+              );
+            }
           }
 
           // 1a. Validate credit person exists if creditPersonId is provided
@@ -272,7 +293,8 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
             throw new CustomError(400, "Final amount cannot be negative");
           }
 
-          // 4. Validate stock availability and deduct stock
+          // 4. Validate stock availability and deduct stock (only for storefront sales)
+          if (!isDirectSale) {
           for (const product of validatedProducts) {
             const stockRecord = await StorefrontInventory.findOne(
               {
@@ -320,10 +342,15 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
             await stockRecord.save({ session });
           }
 
+          } // End of stock deduction for storefront sales
+
           // 5. Create order with calculated values
           const orderData = {
+            saleType,
             orderNumber,
-            storefrontId: new mongoose.Types.ObjectId(storefrontId),
+            storefrontId: storefrontId
+              ? new mongoose.Types.ObjectId(storefrontId)
+              : null,
             ordersProducts: validatedProducts,
             creditPersonId: creditPersonId
               ? new mongoose.Types.ObjectId(creditPersonId)
@@ -336,6 +363,9 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
             paymentType: paymentType || "paid",
             paymentMethod: paymentMethod || "cash",
             orderStatus: "completed",
+            customerName: customerName || null,
+            customerPhone: customerPhone || null,
+            note: note || null,
             soldBy,
           };
 
@@ -462,7 +492,21 @@ export const getAllOrders = asyncErrorHandler(async (req, res, next) => {
   };
 
   // Extract query parameters
-  const { paymentType, paymentMethod } = req.query;
+  const { saleType, paymentType, paymentMethod } = req.query;
+
+  // Add saleType filter if provided
+  if (saleType !== undefined && saleType !== "") {
+    const validSaleTypes = ["storefront", "direct-sale"];
+    if (!validSaleTypes.includes(saleType)) {
+      return next(
+        new CustomError(
+          400,
+          `Invalid sale type. Allowed values: ${validSaleTypes.join(", ")}`,
+        ),
+      );
+    }
+    filter.saleType = saleType;
+  }
 
   // Add paymentType filter if provided
   if (paymentType !== undefined && paymentType !== "") {
@@ -752,6 +796,7 @@ export const getOrdersByStorefrontId = asyncErrorHandler(
 
     const orders = await Order.find({
       storefrontId: storefrontId,
+      saleType: "storefront",
       isDeleted: false,
     })
       .sort({ createdAt: -1 }) // Sort by newest first

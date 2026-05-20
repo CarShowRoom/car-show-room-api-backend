@@ -27,10 +27,28 @@ const orderSchema = new mongoose.Schema(
       trim: true,
       uppercase: true,
     },
+    saleType: {
+      type: String,
+      enum: {
+        values: ["storefront", "direct-sale"],
+        message: "Sale type must be storefront or direct-sale",
+      },
+      default: "storefront",
+    },
+    customerName: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    customerPhone: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     storefrontId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "LocationProfile",
-      required: [true, "Storefront is required"],
+      default: null,
     },
     ordersProducts: {
       type: [orderProductsSchema],
@@ -100,6 +118,11 @@ const orderSchema = new mongoose.Schema(
     paymentMethod: {
       type: String,
       default: "cash",
+    },
+    note: {
+      type: String,
+      trim: true,
+      default: null,
     },
   },
   {
