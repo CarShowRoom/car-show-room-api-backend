@@ -5,10 +5,38 @@ import StorefrontInventory from "../models/storefrontInventory.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import XLSX from "xlsx";
+import multer from "multer";
+import {
+  uploadToR2,
+  deleteFromR2,
+  generateR2Key,
+} from "../configs/cloudflareR2.config.js";
 
-// Create new inventory item
+// Create new inventory item (multipart: fields + images)
 export const createInventory = asyncErrorHandler(async (req, res, next) => {
-  const inventoryData = req.body;
+  const inventoryData = { ...req.body };
+
+  // Convert comma-separated tags string to array (from FormData)
+  if (typeof inventoryData.tags === "string") {
+    inventoryData.tags = inventoryData.tags
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+  }
+
+  // Parse wholesalePrices JSON string from FormData
+  if (typeof inventoryData.wholesalePrices === "string") {
+    try {
+      inventoryData.wholesalePrices = JSON.parse(inventoryData.wholesalePrices);
+    } catch {
+      return next(new CustomError(400, "Invalid wholesalePrices format. Must be a valid JSON array."));
+    }
+  }
+
+  // Remove empty string fields from FormData (no file selected, empty text field, etc.)
+  Object.keys(inventoryData).forEach((key) => {
+    if (inventoryData[key] === "") delete inventoryData[key];
+  });
 
   // Check if productCode already exists
   if (inventoryData.productCode) {
@@ -51,6 +79,22 @@ export const createInventory = asyncErrorHandler(async (req, res, next) => {
   }
 
   const newInventory = await Inventory.create(inventoryData);
+
+  // Upload images to R2 if provided
+  if (req.files && req.files.length > 0) {
+    const uploadedImages = [];
+    for (const file of req.files) {
+      const key = generateR2Key(file.originalname, "inventory");
+      const url = await uploadToR2(file, key);
+      uploadedImages.push({
+        url,
+        key,
+        isPrimary: uploadedImages.length === 0,
+      });
+    }
+    newInventory.images = uploadedImages;
+    await newInventory.save();
+  }
 
   res.status(201).json({
     success: true,
@@ -581,3 +625,157 @@ export const getAllCategories = asyncErrorHandler(async (req, res, next) => {
     data: categories.filter(Boolean), // Remove any null or undefined values
   });
 });
+
+// --- Inventory Image Management ---
+
+// Multer config for inventory images (max 5, each up to 5MB)
+export const inventoryMulter = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(
+        new CustomError(400, "Only JPEG, PNG, and WebP images are allowed"),
+        false
+      );
+    }
+    cb(null, true);
+  },
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
+
+// Upload images to inventory item (max 5 total)
+export const uploadInventoryImages = [
+  inventoryMulter.array("images", 5),
+  asyncErrorHandler(async (req, res, next) => {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(new CustomError(400, "Invalid inventory ID format"));
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return next(new CustomError(400, "Please upload at least one image"));
+    }
+
+    const inventory = await Inventory.findById(id);
+    if (!inventory) {
+      return next(new CustomError(404, "Inventory item not found"));
+    }
+
+    const currentCount = inventory.images?.length || 0;
+    const incomingCount = req.files.length;
+    if (currentCount + incomingCount > 5) {
+      return next(
+        new CustomError(
+          400,
+          `Cannot add ${incomingCount} images. Product already has ${currentCount} image(s). Maximum total is 5.`
+        )
+      );
+    }
+
+    const uploadedImages = [];
+
+    for (const file of req.files) {
+      const key = generateR2Key(file.originalname, "inventory");
+      const url = await uploadToR2(file, key);
+      uploadedImages.push({
+        url,
+        key,
+        isPrimary: currentCount === 0 && uploadedImages.length === 0,
+      });
+    }
+
+    inventory.images.push(...uploadedImages);
+    await inventory.save();
+
+    res.status(200).json({
+      success: true,
+      message: `${uploadedImages.length} image(s) uploaded successfully`,
+      data: { images: uploadedImages, totalImages: inventory.images.length },
+    });
+  }),
+];
+
+// Delete a single image from inventory item
+export const deleteInventoryImage = asyncErrorHandler(
+  async (req, res, next) => {
+    const { id, imageId } = req.params;
+
+    if (
+      !mongoose.Types.ObjectId.isValid(id) ||
+      !mongoose.Types.ObjectId.isValid(imageId)
+    ) {
+      return next(new CustomError(400, "Invalid ID format"));
+    }
+
+    const inventory = await Inventory.findById(id);
+    if (!inventory) {
+      return next(new CustomError(404, "Inventory item not found"));
+    }
+
+    const imageIndex = inventory.images.findIndex(
+      (img) => img._id.toString() === imageId
+    );
+    if (imageIndex === -1) {
+      return next(new CustomError(404, "Image not found"));
+    }
+
+    const removedImage = inventory.images[imageIndex];
+    const wasPrimary = removedImage.isPrimary;
+
+    await deleteFromR2(removedImage.key);
+
+    inventory.images.splice(imageIndex, 1);
+
+    if (wasPrimary && inventory.images.length > 0) {
+      inventory.images[0].isPrimary = true;
+    }
+
+    await inventory.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Image deleted successfully",
+      data: { totalImages: inventory.images.length },
+    });
+  }
+);
+
+// Set primary image for inventory item
+export const setPrimaryInventoryImage = asyncErrorHandler(
+  async (req, res, next) => {
+    const { id, imageId } = req.params;
+
+    if (
+      !mongoose.Types.ObjectId.isValid(id) ||
+      !mongoose.Types.ObjectId.isValid(imageId)
+    ) {
+      return next(new CustomError(400, "Invalid ID format"));
+    }
+
+    const inventory = await Inventory.findById(id);
+    if (!inventory) {
+      return next(new CustomError(404, "Inventory item not found"));
+    }
+
+    const imageExists = inventory.images.some(
+      (img) => img._id.toString() === imageId
+    );
+    if (!imageExists) {
+      return next(new CustomError(404, "Image not found"));
+    }
+
+    inventory.images.forEach((img) => {
+      img.isPrimary = img._id.toString() === imageId;
+    });
+
+    await inventory.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Primary image updated successfully",
+      data: { images: inventory.images },
+    });
+  }
+);

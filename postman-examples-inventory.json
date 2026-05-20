@@ -1,72 +1,241 @@
 {
-  "examples": [
+  "info": {
+    "name": "i-max POS - Inventory API",
+    "description": "Complete Postman collection for Inventory management with images (Cloudflare R2) and wholesale pricing",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "inventory-api"
+  },
+  "item": [
     {
-      "name": "Example 1: Complete Product with All Fields",
-      "description": "Full product information including social media sale code, barcode, and all optional fields",
-      "requestBody": {
-        "productName": "Coca Cola 500ml Bottle",
-        "productCode": "COKE500ML", 
-        "saleCode": "FB-COKE500", 
-        "SKU": "COKE-500-ML-BTL", 
-        "barcode": "1234567890123", 
-        "category": "Beverages", 
-        "subCategory": "Soft Drinks", 
-        "brand": "Coca Cola", 
-        "description": "Refreshing carbonated soft drink in 500ml plastic bottle. Perfect for any occasion.", 
-        "buyingPrice": 50, 
-        "sellingPrice": 75, 
-        "unitOfMeasure": "piece", 
-        "reorderPoint": 100, 
-        "reorderQuantity": 500, 
-        "taxRate": 5, 
-        "status": "active", 
-        "tags": ["beverage", "soft-drink", "carbonated", "popular"] 
+      "name": "Create Inventory (with images + wholesale prices)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "productName", "value": "Coca Cola 500ml Bottle", "type": "text" },
+            { "key": "productCode", "value": "COKE500ML", "type": "text" },
+            { "key": "saleCode", "value": "FB-COKE500", "type": "text" },
+            { "key": "category", "value": "Beverages", "type": "text" },
+            { "key": "subCategory", "value": "Soft Drinks", "type": "text" },
+            { "key": "brand", "value": "Coca Cola", "type": "text" },
+            { "key": "description", "value": "Refreshing carbonated soft drink", "type": "text" },
+            { "key": "buyingPrice", "value": "50", "type": "text" },
+            { "key": "sellingPrice", "value": "75", "type": "text" },
+            { "key": "unitOfMeasure", "value": "piece", "type": "text" },
+            { "key": "reorderPoint", "value": "100", "type": "text" },
+            { "key": "reorderQuantity", "value": "500", "type": "text" },
+            { "key": "taxRate", "value": "5", "type": "text" },
+            { "key": "status", "value": "active", "type": "text" },
+            { "key": "tags", "value": "beverage,soft-drink,carbonated", "type": "text" },
+            { "key": "wholesalePrices", "value": "[{\"quantity\":100,\"price\":65},{\"quantity\":500,\"price\":60},{\"quantity\":1000,\"price\":55}]", "type": "text" },
+            { "key": "images", "type": "file", "src": "" }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/inventory",
+          "host": ["{{base_url}}"],
+          "path": ["inventory"]
+        }
       }
     },
     {
-      "name": "Example 2: Minimal Required Fields Only",
-      "description": "Product with only required fields - simplest example",
-      "requestBody": {
-        "productName": "Rice 5kg Bag",
-        "productCode": "RICE5KG",
-        "SKU": "RICE-5KG-BAG",
-        "category": "Food",
-        "buyingPrice": 5000,
-        "sellingPrice": 6500,
-        "unitOfMeasure": "piece"
+      "name": "Create Inventory (minimal fields)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "productName", "value": "Rice 5kg Bag", "type": "text" },
+            { "key": "productCode", "value": "RICE5KG", "type": "text" },
+            { "key": "category", "value": "Food", "type": "text" },
+            { "key": "buyingPrice", "value": "5000", "type": "text" },
+            { "key": "sellingPrice", "value": "6500", "type": "text" },
+            { "key": "unitOfMeasure", "value": "piece", "type": "text" }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/inventory",
+          "host": ["{{base_url}}"],
+          "path": ["inventory"]
+        }
       }
     },
     {
-      "name": "Example 3: Product with Social Media Sale Code",
-      "description": "Product configured for social media sales with sale code and additional details",
-      "requestBody": {
-        "productName": "Samsung Galaxy S23 Ultra",
-        "productCode": "SAMS23ULTRA",
-        "saleCode": "IG-SAMS23-ULTRA",
-        "SKU": "SAMSUNG-S23-ULTRA-256GB",
-        "barcode": "8806094567890",
-        "category": "Electronics",
-        "subCategory": "Smartphones",
-        "brand": "Samsung",
-        "description": "Premium flagship smartphone with 256GB storage, 12GB RAM, 200MP camera, and 5G connectivity.",
-        "buyingPrice": 1200000,
-        "sellingPrice": 1500000,
-        "unitOfMeasure": "piece",
-        "reorderPoint": 5,
-        "reorderQuantity": 20,
-        "taxRate": 0,
-        "status": "active",
-        "tags": ["smartphone", "android", "5g", "premium", "samsung"]
+      "name": "Get All Inventory",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/inventory?page=1&limit=10&category=Beverages&status=active&search=Coca&sortBy=createdAt&sortOrder=desc",
+          "host": ["{{base_url}}"],
+          "path": ["inventory"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "10" },
+            { "key": "category", "value": "Beverages" },
+            { "key": "status", "value": "active" },
+            { "key": "search", "value": "Coca" },
+            { "key": "sortBy", "value": "createdAt" },
+            { "key": "sortOrder", "value": "desc" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Inventory By ID",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/inventory/664c9f1a...",
+          "host": ["{{base_url}}"],
+          "path": ["inventory", "664c9f1a..."],
+          "variable": [
+            { "key": "id", "value": "664c9f1a..." }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Update Inventory",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"productName\": \"Coca Cola 500ml Pet Bottle\",\n  \"sellingPrice\": 80,\n  \"wholesalePrices\": [\n    { \"quantity\": 50, \"price\": 70 },\n    { \"quantity\": 200, \"price\": 65 },\n    { \"quantity\": 500, \"price\": 60 }\n  ]\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/inventory/664c9f1a...",
+          "host": ["{{base_url}}"],
+          "path": ["inventory", "664c9f1a..."],
+          "variable": [
+            { "key": "id", "value": "664c9f1a..." }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Upload Images to Existing Product",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "images", "type": "file", "src": "" }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/inventory/664c9f1a.../images",
+          "host": ["{{base_url}}"],
+          "path": ["inventory", "664c9f1a...", "images"],
+          "variable": [
+            { "key": "id", "value": "664c9f1a..." }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Delete Image from Product",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/inventory/664c9f1a.../images/664c9f1b...",
+          "host": ["{{base_url}}"],
+          "path": ["inventory", "664c9f1a...", "images", "664c9f1b..."],
+          "variable": [
+            { "key": "id", "value": "664c9f1a..." },
+            { "key": "imageId", "value": "664c9f1b..." }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Set Primary Image",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/inventory/664c9f1a.../images/664c9f1b.../primary",
+          "host": ["{{base_url}}"],
+          "path": ["inventory", "664c9f1a...", "images", "664c9f1b...", "primary"],
+          "variable": [
+            { "key": "id", "value": "664c9f1a..." },
+            { "key": "imageId", "value": "664c9f1b..." }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get All Categories",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/inventory/categories",
+          "host": ["{{base_url}}"],
+          "path": ["inventory", "categories"]
+        }
+      }
+    },
+    {
+      "name": "Bulk Import from Excel",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "file", "type": "file", "src": "" }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/inventory/import-excel",
+          "host": ["{{base_url}}"],
+          "path": ["inventory", "import-excel"]
+        }
       }
     }
   ],
-  "instructions": {
-    "method": "POST",
-    "url": "http://localhost:YOUR_PORT/api/v1/inventory",
-    "headers": {
-      "Content-Type": "application/json"
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000/api/v1",
+      "type": "string"
     },
-    "note": "Copy any of the requestBody objects above and paste into Postman body (raw JSON). Note: Remove inline comments (//) before using in Postman if they cause issues, as standard JSON doesn't support comments."
-  }
+    {
+      "key": "jwt_token",
+      "value": "your-jwt-token-here",
+      "type": "string"
+    }
+  ]
 }
-
