@@ -273,6 +273,8 @@ export const getAllStorefrontInventory = asyncErrorHandler(
           "inventoryId.sellingPrice": 1,
           "inventoryId.barcode": 1,
           "inventoryId.status": 1,
+          "inventoryId.unitOfMeasure": 1,
+          "inventoryId.uomConversions": 1,
           "storefrontId._id": 1,
           "storefrontId.locationName": 1,
           "storefrontId.locationCode": 1,
@@ -340,12 +342,25 @@ export const getAllStorefrontInventory = asyncErrorHandler(
     // Execute aggregate query
     const stock = await StorefrontInventory.aggregate(pipeline);
 
+    // Add quantityByUnit (computed from uomConversions) to each item
+    const enrichedStock = stock.map((item) => {
+      const uomConversions = item.inventoryId?.uomConversions || [];
+      const baseUnit = item.inventoryId?.unitOfMeasure || "piece";
+      const baseQty = item.quantity || 0;
+
+      const quantityByUnit = { [baseUnit]: baseQty };
+      for (const conv of uomConversions) {
+        quantityByUnit[conv.unit] = baseQty * conv.factor;
+      }
+      return { ...item, quantityByUnit };
+    });
+
     const response = {
       success: true,
       message:
         "Storefront inventory retrieved successfully (Active products only)",
       summary,
-      data: stock,
+      data: enrichedStock,
     };
 
     if (usePagination) {
@@ -376,7 +391,7 @@ export const getStorefrontInventoryById = asyncErrorHandler(
     const stock = await StorefrontInventory.findById(id)
       .populate(
         "inventoryId",
-        "productName productCode SKU category buyingPrice sellingPrice barcode status",
+        "productName productCode SKU category buyingPrice sellingPrice barcode status unitOfMeasure uomConversions",
       )
       .populate("storefrontId", "locationName locationCode locationAddress");
 
@@ -384,10 +399,19 @@ export const getStorefrontInventoryById = asyncErrorHandler(
       return next(new CustomError(404, "Storefront inventory not found"));
     }
 
+    // Add quantityByUnit
+    const uomConversions = stock.inventoryId?.uomConversions || [];
+    const baseUnit = stock.inventoryId?.unitOfMeasure || "piece";
+    const baseQty = stock.quantity || 0;
+    const quantityByUnit = { [baseUnit]: baseQty };
+    for (const conv of uomConversions) {
+      quantityByUnit[conv.unit] = baseQty * conv.factor;
+    }
+
     res.status(200).json({
       success: true,
       message: "Storefront inventory retrieved successfully",
-      data: stock,
+      data: { ...stock.toObject(), quantityByUnit },
     });
   },
 );

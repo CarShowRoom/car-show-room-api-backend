@@ -231,7 +231,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
             inventoryMap.set(item._id.toString(), item);
           });
 
-          // 3. Prepare order products with unitPrice from current sellingPrice (snapshot)
+          // 3. Prepare order products with UOM conversion and unitPrice snapshot
           const validatedProducts = [];
           let calculatedSubTotal = 0;
 
@@ -265,15 +265,33 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
               );
             }
 
-            // Store current sellingPrice as snapshot unitPrice in order
-            const unitPrice = inventoryItem.sellingPrice;
+            // UOM conversion: determine factor and compute unitPrice / baseQuantity
+            let factor = 1;
+            let unit = null;
+            let baseQuantity = product.quantity;
+
+            if (product.unit && inventoryItem.uomConversions?.length > 0) {
+              const conversion = inventoryItem.uomConversions.find(
+                (c) => c.unit?.toLowerCase() === String(product.unit).toLowerCase(),
+              );
+              if (conversion) {
+                factor = conversion.factor;
+                unit = conversion.unit;
+                baseQuantity = product.quantity / factor;
+              }
+            }
+
+            const unitPrice = inventoryItem.sellingPrice / factor;
             const productSubTotal = product.quantity * unitPrice;
             calculatedSubTotal += productSubTotal;
 
             validatedProducts.push({
               inventoryId,
+              unit,
+              factor,
               quantity: product.quantity,
-              unitPrice, // Snapshot of current selling price
+              baseQuantity,
+              unitPrice,
             });
           }
 
@@ -317,9 +335,10 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
               );
             }
 
-            // Check stock availability
+            // Check stock availability (stock is in base units)
             const availableQuantity = stockRecord.quantity || 0;
-            if (availableQuantity < product.quantity) {
+            const requestedBase = product.baseQuantity || product.quantity;
+            if (availableQuantity < requestedBase) {
               const inventoryItem = inventoryMap.get(
                 product.inventoryId.toString(),
               );
@@ -329,15 +348,12 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
                   inventoryItem?.productCode || product.inventoryId
                 }' (${
                   inventoryItem?.productName || "Unknown"
-                }). Available: ${availableQuantity}, Requested: ${
-                  product.quantity
-                }`,
+                }). Available: ${availableQuantity}, Requested: ${requestedBase}`,
               );
             }
 
-            // Deduct stock - modify document directly and save with session
-            // This follows the pattern in StorefrontInventory model's removeStock method
-            stockRecord.quantity -= product.quantity;
+            // Deduct stock (use baseQuantity for stock deduction)
+            stockRecord.quantity -= requestedBase;
             stockRecord.lastUpdated = new Date();
             await stockRecord.save({ session });
           }
@@ -986,12 +1002,25 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
           );
         }
 
-        // Check stock availability - stock must be >= quantity to add
+        // UOM conversion: compute base quantity for stock check
+        let factor = 1;
+        let baseQuantity = item.quantity;
+        if (item.unit && inventoryItem.uomConversions?.length > 0) {
+          const conversion = inventoryItem.uomConversions.find(
+            (c) => c.unit?.toLowerCase() === String(item.unit).toLowerCase(),
+          );
+          if (conversion) {
+            factor = conversion.factor;
+            baseQuantity = item.quantity / factor;
+          }
+        }
+
+        // Check stock availability (stock is in base units)
         const availableQuantity = stockRecord.quantity || 0;
-        if (availableQuantity < item.quantity) {
+        if (availableQuantity < baseQuantity) {
           throw new CustomError(
             400,
-            `Insufficient stock for product '${inventoryItem.productCode}' (${inventoryItem.productName}). Available: ${availableQuantity}, Requested: ${item.quantity}`,
+            `Insufficient stock for product '${inventoryItem.productCode}' (${inventoryItem.productName}). Available: ${availableQuantity}, Requested: ${baseQuantity}`,
           );
         }
 
@@ -1003,8 +1032,24 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
       for (const item of items) {
         const inventoryId = new mongoose.Types.ObjectId(item.inventoryId);
         const inventoryItem = inventoryMap.get(inventoryId.toString());
-        const unitPrice = inventoryItem.sellingPrice;
         const stockRecord = stockRecordsMap.get(inventoryId.toString());
+
+        // UOM conversion for this item
+        let factor = 1;
+        let unit = null;
+        let baseQuantity = item.quantity;
+        if (item.unit && inventoryItem.uomConversions?.length > 0) {
+          const conversion = inventoryItem.uomConversions.find(
+            (c) => c.unit?.toLowerCase() === String(item.unit).toLowerCase(),
+          );
+          if (conversion) {
+            factor = conversion.factor;
+            unit = conversion.unit;
+            baseQuantity = item.quantity / factor;
+          }
+        }
+
+        const unitPrice = inventoryItem.sellingPrice / factor;
 
         // Check if item already exists in order
         const existingItemIndex = order.ordersProducts.findIndex(
@@ -1013,19 +1058,23 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
         );
 
         if (existingItemIndex !== -1) {
-          // Item exists, increase quantity
+          // Item exists, increase quantity and baseQuantity
           order.ordersProducts[existingItemIndex].quantity += item.quantity;
+          order.ordersProducts[existingItemIndex].baseQuantity += baseQuantity;
         } else {
           // Item doesn't exist, add new item
           order.ordersProducts.push({
-            inventoryId: inventoryId,
+            inventoryId,
+            unit,
+            factor,
             quantity: item.quantity,
+            baseQuantity,
             unitPrice,
           });
         }
 
-        // Deduct stock
-        stockRecord.quantity -= item.quantity;
+        // Deduct stock using baseQuantity
+        stockRecord.quantity -= baseQuantity;
         stockRecord.lastUpdated = new Date();
         await stockRecord.save({ session });
       }
@@ -1242,19 +1291,29 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
         const { inventoryId, quantity, existingItemIndex, existingItem } =
           itemToProcess;
 
-        // Calculate new quantity
+        // Calculate base quantity to restore (use existing item's factor)
+        const factor = existingItem.factor || 1;
+        const restoreBaseQty = quantity / factor;
+
+        // Calculate new quantity (in selling unit)
         const newQuantity = existingItem.quantity - quantity;
+        const newBaseQuantity = existingItem.baseQuantity != null
+          ? existingItem.baseQuantity - restoreBaseQty
+          : null;
 
         // Update or remove item
         if (newQuantity <= 0) {
           // Remove item from array if quantity becomes zero or negative
           order.ordersProducts.splice(existingItemIndex, 1);
         } else {
-          // Update quantity
+          // Update quantity and baseQuantity
           order.ordersProducts[existingItemIndex].quantity = newQuantity;
+          if (order.ordersProducts[existingItemIndex].baseQuantity != null) {
+            order.ordersProducts[existingItemIndex].baseQuantity = newBaseQuantity;
+          }
         }
 
-        // Restore stock
+        // Restore stock (in base units)
         const stockRecord = await StorefrontInventory.findOne(
           {
             inventoryId: inventoryId,
@@ -1266,14 +1325,12 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
 
         if (!stockRecord) {
           // If stock record doesn't exist, create it
-          // This should rarely happen as stock records are created when orders are made
-          // But we handle it for safety
           await StorefrontInventory.create(
             [
               {
                 inventoryId: inventoryId,
                 storefrontId: order.storefrontId,
-                quantity: quantity,
+                quantity: restoreBaseQty,
                 lastUpdated: new Date(),
               },
             ],
@@ -1281,7 +1338,7 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
           );
         } else {
           // Restore stock to existing record
-          stockRecord.quantity += quantity;
+          stockRecord.quantity += restoreBaseQty;
           stockRecord.lastUpdated = new Date();
           await stockRecord.save({ session });
         }

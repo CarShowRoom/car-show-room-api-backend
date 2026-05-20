@@ -28,6 +28,8 @@ import expenseRouter from "./routes/expense.route.js";
 import stockAuditLogRouter from "./routes/stockAuditLog.route.js";
 import saleReportRouter from "./routes/saleReport.route.js";
 import shopSettingRouter from "./routes/shopSetting.route.js";
+import purchaseReportRouter from "./routes/purchaseReport.route.js";
+import quotationRouter from "./routes/quotation.route.js";
 const app = express();
 app.use(
   helmet({
@@ -64,6 +66,8 @@ app.use("/api/v1", expenseRouter);
 app.use("/api/v1", stockAuditLogRouter);
 app.use("/api/v1", saleReportRouter);
 app.use("/api/v1", shopSettingRouter);
+app.use("/api/v1", purchaseReportRouter);
+app.use("/api/v1", quotationRouter);
 //404-Error Handler
 app.all("/*any", (req, res, next) => {
   const err = new CustomError(

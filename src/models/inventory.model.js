@@ -79,24 +79,26 @@ const inventorySchema = new mongoose.Schema(
     unitOfMeasure: {
       type: String,
       required: [true, "Unit of measure is required"],
-      enum: {
-        values: [
-          "piece",
-          "kg",
-          "gram",
-          "liter",
-          "ml",
-          "meter",
-          "cm",
-          "box",
-          "pack",
-          "carton",
-          "dozen",
-          "pair",
-        ],
-        message: "Invalid unit of measure",
-      },
       default: "piece",
+    },
+    uomConversions: {
+      type: [{
+        unit: {
+          type: String,
+          required: [true, "Conversion unit name is required"],
+          trim: true,
+        },
+        factor: {
+          type: Number,
+          required: [true, "Conversion factor is required"],
+          min: [0.001, "Factor must be greater than 0"],
+        },
+        isDefaultSellingUnit: {
+          type: Boolean,
+          default: false,
+        },
+      }],
+      _id: false,
     },
     reorderPoint: {
       type: Number,
@@ -142,8 +144,8 @@ const inventorySchema = new mongoose.Schema(
         },
       },
     ],
-    wholesalePrices: [
-      {
+    wholesalePrices: {
+      type: [{
         quantity: {
           type: Number,
           min: [1, "Quantity must be at least 1"],
@@ -152,8 +154,9 @@ const inventorySchema = new mongoose.Schema(
           type: Number,
           min: [0, "Price cannot be negative"],
         },
-      },
-    ],
+      }],
+      _id: false,
+    },
     note: {
       type: String,
       trim: true,
@@ -196,13 +199,26 @@ inventorySchema.virtual("profitAmount").get(function () {
   return this.sellingPrice - this.buyingPrice;
 });
 
-// Pre-save middleware to validate wholesale prices have unique quantities
+// Pre-save middleware to validate wholesale prices and UOM conversions
 inventorySchema.pre("save", function () {
   if (this.wholesalePrices && this.wholesalePrices.length > 0) {
     const quantities = this.wholesalePrices.map((wp) => wp.quantity);
     const uniqueQuantities = new Set(quantities);
     if (quantities.length !== uniqueQuantities.size) {
       throw new Error("Duplicate quantities are not allowed in wholesale prices");
+    }
+  }
+  if (this.uomConversions && this.uomConversions.length > 0) {
+    const units = this.uomConversions.map((c) => c.unit?.toLowerCase());
+    const uniqueUnits = new Set(units);
+    if (units.length !== uniqueUnits.size) {
+      throw new Error("Duplicate unit names are not allowed in UOM conversions");
+    }
+    if (this.unitOfMeasure) {
+      const baseLower = this.unitOfMeasure.toLowerCase();
+      if (units.includes(baseLower)) {
+        throw new Error(`Conversion unit cannot be the same as the base unit "${this.unitOfMeasure}"`);
+      }
     }
   }
 });

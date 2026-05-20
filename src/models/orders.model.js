@@ -6,10 +6,25 @@ const orderProductsSchema = new mongoose.Schema({
     ref: "Inventory",
     required: [true, "Inventory ID is required"],
   },
+  unit: {
+    type: String,
+    default: null,
+    trim: true,
+  },
+  factor: {
+    type: Number,
+    default: 1,
+    min: [0.001, "Factor must be greater than 0"],
+  },
   quantity: {
     type: Number,
     required: [true, "Quantity is required"],
     min: [1, "Quantity must be at least 1"],
+  },
+  baseQuantity: {
+    type: Number,
+    min: [0, "Base quantity cannot be negative"],
+    default: null,
   },
   unitPrice: {
     type: Number,

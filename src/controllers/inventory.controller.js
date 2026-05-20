@@ -33,6 +33,15 @@ export const createInventory = asyncErrorHandler(async (req, res, next) => {
     }
   }
 
+  // Parse uomConversions JSON string from FormData
+  if (typeof inventoryData.uomConversions === "string") {
+    try {
+      inventoryData.uomConversions = JSON.parse(inventoryData.uomConversions);
+    } catch {
+      return next(new CustomError(400, "Invalid uomConversions format. Must be a valid JSON array."));
+    }
+  }
+
   // Remove empty string fields from FormData (no file selected, empty text field, etc.)
   Object.keys(inventoryData).forEach((key) => {
     if (inventoryData[key] === "") delete inventoryData[key];
@@ -422,21 +431,6 @@ export const importInventoryFromExcel = asyncErrorHandler(
       created: [],
     };
 
-    const validUnitOfMeasures = [
-      "piece",
-      "kg",
-      "gram",
-      "liter",
-      "ml",
-      "meter",
-      "cm",
-      "box",
-      "pack",
-      "carton",
-      "dozen",
-      "pair",
-    ];
-
     const validStatuses = ["active", "inactive", "discontinued"];
 
     for (let i = 0; i < rows.length; i++) {
@@ -533,11 +527,6 @@ export const importInventoryFromExcel = asyncErrorHandler(
           row.unit_of_measure ||
           row["Unit of Measure"] ||
           "piece";
-        if (
-          !validUnitOfMeasures.includes(String(unitOfMeasure).toLowerCase())
-        ) {
-          throw new Error(`Invalid unit of measure: '${unitOfMeasure}'`);
-        }
 
         const status = row.status || row["Status"] || "active";
         if (!validStatuses.includes(String(status).toLowerCase())) {

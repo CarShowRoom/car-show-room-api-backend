@@ -784,11 +784,19 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
       { $match: filter },
       // Unwind the ordersProducts array to get individual products
       { $unwind: "$ordersProducts" },
+      // Add a baseQuantity field (use baseQuantity if available, fallback to quantity)
+      {
+        $addFields: {
+          "ordersProducts.effectiveBaseQty": {
+            $ifNull: ["$ordersProducts.baseQuantity", "$ordersProducts.quantity"],
+          },
+        },
+      },
       // Group by inventoryId to aggregate statistics
       {
         $group: {
           _id: "$ordersProducts.inventoryId",
-          totalQuantity: { $sum: "$ordersProducts.quantity" },
+          totalQuantity: { $sum: "$ordersProducts.effectiveBaseQty" },
           totalRevenue: {
             $sum: {
               $multiply: [
