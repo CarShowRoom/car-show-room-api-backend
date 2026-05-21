@@ -2,6 +2,7 @@ import express from "express";
 import {
   signup,
   login,
+  logout,
   updatePassword,
   userSoftDelete,
   getAllAccounts,
@@ -21,6 +22,7 @@ router.post(
   signup
 );
 router.post("/admin/login", login);
+router.post("/admin/logout", protect, logout);
 router.get(
   "/admin",
   protect,

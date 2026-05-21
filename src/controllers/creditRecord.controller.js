@@ -4,6 +4,7 @@ import Order from "../models/orders.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import { createDateFilter } from "../utils/dateFilter.utils.js";
+import { logActivity } from "../services/activityLog.service.js";
 
 // Create credit record payment (for partial/full payment on credit orders)
 export const createCreditPayment = asyncErrorHandler(async (req, res, next) => {
@@ -132,6 +133,16 @@ export const createCreditPayment = asyncErrorHandler(async (req, res, next) => {
       };
 
       // 10. Send response
+      logActivity({
+        admin: addedBy,
+        action: "create_payment",
+        feature: "credit",
+        description: `Credit payment ${paidAmount} MMK recorded for order ${order.orderNumber}`,
+        targetId: creditRecord._id,
+        targetModel: "CreditRecord",
+        metadata: { orderId: order._id, paidAmount, orderNumber: order.orderNumber },
+        ip: req.ip,
+      });
       res.status(201).json({
         success: true,
         message: "Credit payment recorded successfully",

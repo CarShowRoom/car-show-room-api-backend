@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import { validatePhoneNumber } from "../utils/phoneValidation.utils.js";
+import { logActivity } from "../services/activityLog.service.js";
 import LocationProfile from "../models/locationProfile.model.js";
 
 // Create new warehouse profile
@@ -65,6 +66,15 @@ export const createWarehouseProfile = asyncErrorHandler(
 
     const newWarehouseProfile = await LocationProfile.create(warehouseData);
 
+    logActivity({
+      admin: req.user._id,
+      action: "create",
+      feature: "warehouse_profile",
+      description: `Created warehouse ${newWarehouseProfile.locationName}`,
+      targetId: newWarehouseProfile._id,
+      targetModel: "LocationProfile",
+      ip: req.ip,
+    });
     res.status(201).json({
       success: true,
       message: "Warehouse profile created successfully",
@@ -293,6 +303,15 @@ export const updateWarehouseProfile = asyncErrorHandler(
       { new: true, runValidators: true }
     );
 
+    logActivity({
+      admin: req.user._id,
+      action: "update",
+      feature: "warehouse_profile",
+      description: `Updated warehouse ${updatedWarehouse.locationName}`,
+      targetId: updatedWarehouse._id,
+      targetModel: "LocationProfile",
+      ip: req.ip,
+    });
     res.status(200).json({
       success: true,
       message: "Warehouse profile updated successfully",

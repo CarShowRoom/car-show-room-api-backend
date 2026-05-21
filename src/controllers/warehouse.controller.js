@@ -4,6 +4,7 @@ import LocationProfile from "../models/locationProfile.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import mongoose from "mongoose";
+import { logActivity } from "../services/activityLog.service.js";
 import {
   createStockAuditLog,
   determineActionType,
@@ -160,6 +161,15 @@ export const createWarehouseStock = asyncErrorHandler(
       }
     }
 
+    logActivity({
+      admin: req.user._id,
+      action: "create",
+      feature: "warehouse_stock",
+      description: `Added ${createdRecords.length} inventory items to warehouse`,
+      targetModel: "WarehouseStock",
+      metadata: { warehouseId, inventoryCount: inventoryIds.length, created: createdRecords.length },
+      ip: req.ip,
+    });
     res.status(201).json({
       success: true,
       message: `Processed ${inventoryIds.length} inventory record(s)`,
@@ -497,6 +507,16 @@ export const updateWarehouseStockQuantity = asyncErrorHandler(
           ? `increased by ${Math.abs(quantityChange)}`
           : `decreased by ${Math.abs(quantityChange)}`;
 
+      logActivity({
+        admin: adminId,
+        action: "update_quantity",
+        feature: "warehouse_stock",
+        description: `Warehouse stock ${actionMessage} (change: ${quantityChange})`,
+        targetId: updatedStock._id,
+        targetModel: "WarehouseStock",
+        metadata: { inventoryId: updatedStock.inventoryId?._id, warehouseId: stockToUpdate.warehouseId?._id, quantityChange, newQuantity: updatedStock.quantity },
+        ip: req.ip,
+      });
       res.status(200).json({
         success: true,
         message: `Warehouse stock quantity ${actionMessage} successfully. New quantity: ${updatedStock.quantity}`,

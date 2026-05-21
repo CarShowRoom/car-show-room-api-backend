@@ -5,6 +5,7 @@ import Inventory from "../models/inventory.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import { createDateFilter } from "../utils/dateFilter.utils.js";
+import { logActivity } from "../services/activityLog.service.js";
 
 // Create new GRN (Supports Partial GRN - Can receive one or more items from PO)
 export const createGRN = asyncErrorHandler(async (req, res, next) => {
@@ -357,6 +358,17 @@ export const createGRN = asyncErrorHandler(async (req, res, next) => {
     "productName productCode SKU sellingPrice"
   );
 
+  logActivity({
+    admin: req.user._id,
+    action: "create",
+    feature: "grn",
+    description: `Created GRN ${newGRN.grnNumber} - ${newGRN.totalAmount} MMK`,
+    targetId: newGRN._id,
+    targetModel: "GoodsRecievedNote",
+    metadata: { totalAmount: newGRN.totalAmount, status: newGRN.status },
+    ip: req.ip,
+  });
+
   res.status(201).json({
     success: true,
     message: "GRN created successfully",
@@ -510,6 +522,17 @@ export const updateGRNStatus = asyncErrorHandler(async (req, res, next) => {
     return next(new CustomError(404, "GRN not found"));
   }
 
+  logActivity({
+    admin: req.user._id,
+    action: "update_status",
+    feature: "grn",
+    description: `Updated GRN ${grn.grnNumber} status to ${grn.status}`,
+    targetId: grn._id,
+    targetModel: "GoodsRecievedNote",
+    metadata: { status: grn.status },
+    ip: req.ip,
+  });
+
   res.status(200).json({
     success: true,
     message: "GRN status updated successfully",
@@ -643,6 +666,16 @@ export const updateGRNLineItems = asyncErrorHandler(async (req, res, next) => {
     "lineItems.inventoryId",
     "productName productCode SKU category buyingPrice sellingPrice"
   );
+
+  logActivity({
+    admin: req.user._id,
+    action: "update_line_items",
+    feature: "grn",
+    description: `Updated line items for GRN ${grn.grnNumber}`,
+    targetId: grn._id,
+    targetModel: "GoodsRecievedNote",
+    ip: req.ip,
+  });
 
   res.status(200).json({
     success: true,

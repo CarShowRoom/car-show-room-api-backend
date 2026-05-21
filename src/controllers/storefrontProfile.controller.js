@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import { validatePhoneNumber } from "../utils/phoneValidation.utils.js";
+import { logActivity } from "../services/activityLog.service.js";
 import LocationProfile from "../models/locationProfile.model.js";
 
 // Create new storefront profile
@@ -65,6 +66,15 @@ export const createStorefrontProfile = asyncErrorHandler(
 
     const newStorefrontProfile = await LocationProfile.create(storefrontData);
 
+    logActivity({
+      admin: req.user._id,
+      action: "create",
+      feature: "storefront_profile",
+      description: `Created storefront ${newStorefrontProfile.locationName}`,
+      targetId: newStorefrontProfile._id,
+      targetModel: "LocationProfile",
+      ip: req.ip,
+    });
     res.status(201).json({
       success: true,
       message: "Storefront profile created successfully",
@@ -293,6 +303,15 @@ export const updateStorefrontProfile = asyncErrorHandler(
       { new: true, runValidators: true }
     );
 
+    logActivity({
+      admin: req.user._id,
+      action: "update",
+      feature: "storefront_profile",
+      description: `Updated storefront ${updatedStorefront.locationName}`,
+      targetId: updatedStorefront._id,
+      targetModel: "LocationProfile",
+      ip: req.ip,
+    });
     res.status(200).json({
       success: true,
       message: "Storefront profile updated successfully",

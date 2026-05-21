@@ -3,6 +3,7 @@ import Purchasing from "../models/purchasing.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import Inventory from "../models/inventory.model.js";
+import { logActivity } from "../services/activityLog.service.js";
 import { createDateFilter } from "../utils/dateFilter.utils.js";
 
 export const createPurchase = asyncErrorHandler(async (req, res, next) => {
@@ -53,6 +54,17 @@ export const createPurchase = asyncErrorHandler(async (req, res, next) => {
     totalAmount,
     status: "pending",
     purchasedBy,
+  });
+
+  logActivity({
+    admin: purchasedBy,
+    action: "create",
+    feature: "purchase",
+    description: `Created PO ${purchase.poNumber} - ${purchase.totalAmount} MMK`,
+    targetId: purchase._id,
+    targetModel: "Purchasing",
+    metadata: { status: purchase.status, totalAmount: purchase.totalAmount },
+    ip: req.ip,
   });
 
   res.status(201).json({
@@ -264,6 +276,17 @@ export const updatePurchaseStatus = asyncErrorHandler(
       return next(new CustomError(404, "Purchase order not found"));
     }
 
+    logActivity({
+      admin: req.user._id,
+      action: "update_status",
+      feature: "purchase",
+      description: `Updated PO ${purchase.poNumber} status to ${purchase.status}`,
+      targetId: purchase._id,
+      targetModel: "Purchasing",
+      metadata: { status: purchase.status },
+      ip: req.ip,
+    });
+
     res.status(200).json({
       success: true,
       message: "Purchase status updated successfully",
@@ -295,6 +318,16 @@ export const softDeletePurchase = asyncErrorHandler(async (req, res, next) => {
   purchase.isDeleted = true;
   purchase.deletedAt = new Date();
   await purchase.save();
+
+  logActivity({
+    admin: req.user._id,
+    action: "delete",
+    feature: "purchase",
+    description: `Deleted PO ${purchase.poNumber}`,
+    targetId: purchase._id,
+    targetModel: "Purchasing",
+    ip: req.ip,
+  });
 
   res.status(200).json({
     success: true,

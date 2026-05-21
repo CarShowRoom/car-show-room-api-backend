@@ -2,6 +2,7 @@ import SupplierProfile from "../models/supplierProfile.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import mongoose from "mongoose";
+import { logActivity } from "../services/activityLog.service.js";
 
 export const createSupplierProfile = asyncErrorHandler(
   async (req, res, next) => {
@@ -16,6 +17,15 @@ export const createSupplierProfile = asyncErrorHandler(
       contactNumber,
     });
 
+    logActivity({
+      admin: req.user._id,
+      action: "create",
+      feature: "supplier",
+      description: `Created supplier ${supplier.supplierName}`,
+      targetId: supplier._id,
+      targetModel: "SupplierProfile",
+      ip: req.ip,
+    });
     res.status(201).json({
       success: true,
       message: "Supplier profile created successfully",
@@ -104,6 +114,15 @@ export const updateSupplierProfile = asyncErrorHandler(
     if (!supplier) {
       return next(new CustomError(404, "Supplier profile not found"));
     }
+    logActivity({
+      admin: req.user._id,
+      action: "update",
+      feature: "supplier",
+      description: `Updated supplier ${supplier.supplierName}`,
+      targetId: supplier._id,
+      targetModel: "SupplierProfile",
+      ip: req.ip,
+    });
     res.status(200).json({
       success: true,
       message: "Supplier profile updated successfully",
@@ -135,6 +154,15 @@ export const softDeleteSupplierProfile = asyncErrorHandler(
     if (!softDeletedSupplier) {
       return next(new CustomError(404, "Supplier profile not found"));
     }
+    logActivity({
+      admin: req.user._id,
+      action: "delete",
+      feature: "supplier",
+      description: `Soft deleted supplier ${softDeletedSupplier.supplierName}`,
+      targetId: softDeletedSupplier._id,
+      targetModel: "SupplierProfile",
+      ip: req.ip,
+    });
     res.status(200).json({
       success: true,
       message: "Supplier profile soft deleted successfully",

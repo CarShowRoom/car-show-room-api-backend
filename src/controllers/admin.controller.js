@@ -3,6 +3,7 @@ import asyncErrorHandler from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import { signToken } from "../services/jwtToken.service.js";
 import mongoose from "mongoose";
+import { logActivity } from "../services/activityLog.service.js";
 
 export const signup = asyncErrorHandler(async (req, res, next) => {
   const { name, password, confirmPassword, role, locationId } = req.body;
@@ -71,6 +72,14 @@ export const login = asyncErrorHandler(async (req, res, next) => {
   }
 
   const token = signToken(admin._id, admin.role, admin.locationId);
+
+  logActivity({
+    admin: admin._id,
+    action: "login",
+    feature: "auth",
+    description: `${admin.name} logged in`,
+    ip: req.ip,
+  });
 
   res.status(200).json({
     success: true,
@@ -282,5 +291,20 @@ export const updateUser = asyncErrorHandler(async (req, res, next) => {
     success: true,
     message: "User updated successfully.",
     data: updatedUser,
+  });
+});
+
+export const logout = asyncErrorHandler(async (req, res, next) => {
+  logActivity({
+    admin: req.user._id,
+    action: "logout",
+    feature: "auth",
+    description: `${req.user.name} logged out`,
+    ip: req.ip,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Logged out successfully",
   });
 });

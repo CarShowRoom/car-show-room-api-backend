@@ -1,6 +1,7 @@
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import Expense from "../models/expense.model.js";
+import { logActivity } from "../services/activityLog.service.js";
 import mongoose from "mongoose";
 import { createDateFilter } from "../utils/dateFilter.utils.js";
 
@@ -41,6 +42,16 @@ export const createExpense = asyncErrorHandler(async (req, res, next) => {
     notes,
     locationId,
     adminId,
+  });
+  logActivity({
+    admin: adminId,
+    action: "create",
+    feature: "expense",
+    description: `Created expense ${expense.category} - ${expense.amount} MMK`,
+    targetId: expense._id,
+    targetModel: "Expense",
+    metadata: { category: expense.category, amount: expense.amount },
+    ip: req.ip,
   });
   res.status(201).json({
     success: true,
@@ -209,6 +220,16 @@ export const updateExpense = asyncErrorHandler(async (req, res, next) => {
   if (!expense) {
     return next(new CustomError(404, "Expense not found"));
   }
+  logActivity({
+    admin: req.user._id,
+    action: "update",
+    feature: "expense",
+    description: `Updated expense ${expense.category} - ${expense.amount} MMK`,
+    targetId: expense._id,
+    targetModel: "Expense",
+    metadata: { category: expense.category, amount: expense.amount },
+    ip: req.ip,
+  });
   res.status(200).json({
     success: true,
     message: "Expense updated successfully.",
@@ -244,6 +265,15 @@ export const softDeleteExpense = asyncErrorHandler(async (req, res, next) => {
   if (!softDeletedExpense) {
     return next(new CustomError(404, "Expense not found"));
   }
+  logActivity({
+    admin: req.user._id,
+    action: "delete",
+    feature: "expense",
+    description: `Soft deleted expense ${softDeletedExpense.category}`,
+    targetId: softDeletedExpense._id,
+    targetModel: "Expense",
+    ip: req.ip,
+  });
   res.status(200).json({
     success: true,
     message: "Expense soft deleted successfully",

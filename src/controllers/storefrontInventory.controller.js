@@ -4,6 +4,7 @@ import LocationProfile from "../models/locationProfile.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import mongoose from "mongoose";
+import { logActivity } from "../services/activityLog.service.js";
 import XLSX from "xlsx";
 import {
   createStockAuditLog,
@@ -167,6 +168,15 @@ export const createStorefrontInventory = asyncErrorHandler(
       }
     }
 
+    logActivity({
+      admin: req.user._id,
+      action: "create",
+      feature: "storefront_stock",
+      description: `Added ${createdRecords.length} inventory items to storefront`,
+      targetModel: "StorefrontInventory",
+      metadata: { storefrontId, inventoryCount: inventoryIds.length, created: createdRecords.length },
+      ip: req.ip,
+    });
     res.status(201).json({
       success: true,
       message: `Processed ${inventoryIds.length} inventory record(s)`,
@@ -543,6 +553,16 @@ export const updateStorefrontInventoryQuantity = asyncErrorHandler(
           ? `increased by ${Math.abs(quantityChange)}`
           : `decreased by ${Math.abs(quantityChange)}`;
 
+      logActivity({
+        admin: adminId,
+        action: "update_quantity",
+        feature: "storefront_stock",
+        description: `Storefront stock ${actionMessage} (change: ${quantityChange})`,
+        targetId: updatedStock._id,
+        targetModel: "StorefrontInventory",
+        metadata: { inventoryId: updatedStock.inventoryId?._id, storefrontId: stockToUpdate.storefrontId?._id, quantityChange, newQuantity: updatedStock.quantity },
+        ip: req.ip,
+      });
       res.status(200).json({
         success: true,
         message: `Storefront inventory quantity ${actionMessage} successfully. New quantity: ${updatedStock.quantity}`,

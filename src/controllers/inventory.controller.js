@@ -4,6 +4,7 @@ import WarehouseStock from "../models/warehouse.model.js";
 import StorefrontInventory from "../models/storefrontInventory.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
+import { logActivity } from "../services/activityLog.service.js";
 import XLSX from "xlsx";
 import multer from "multer";
 import {
@@ -104,6 +105,17 @@ export const createInventory = asyncErrorHandler(async (req, res, next) => {
     newInventory.images = uploadedImages;
     await newInventory.save();
   }
+
+  logActivity({
+    admin: req.user?._id,
+    action: "create",
+    feature: "inventory",
+    description: `Created inventory item ${newInventory.productCode} - ${newInventory.productName}`,
+    targetId: newInventory._id,
+    targetModel: "Inventory",
+    metadata: { productCode: newInventory.productCode, sellingPrice: newInventory.sellingPrice },
+    ip: req.ip,
+  });
 
   res.status(201).json({
     success: true,
@@ -399,6 +411,16 @@ export const updateInventory = asyncErrorHandler(async (req, res, next) => {
 
   // Save the updated inventory (this will run all validators with the complete document)
   const updatedInventory = await existingInventory.save();
+
+  logActivity({
+    admin: req.user?._id,
+    action: "update",
+    feature: "inventory",
+    description: `Updated inventory item ${updatedInventory.productCode} - ${updatedInventory.productName}`,
+    targetId: updatedInventory._id,
+    targetModel: "Inventory",
+    ip: req.ip,
+  });
 
   res.status(200).json({
     success: true,

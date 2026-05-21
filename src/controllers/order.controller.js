@@ -8,6 +8,7 @@ import CreditRecord from "../models/creditRecord.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import { createDateFilter } from "../utils/dateFilter.utils.js";
+import { logActivity } from "../services/activityLog.service.js";
 
 // Create new order with ACID properties and stock deduction
 export const createOrder = asyncErrorHandler(async (req, res, next) => {
@@ -405,6 +406,18 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
 
         // If we reach here, order was created successfully
         // Send response outside the transaction
+
+        logActivity({
+          admin: soldBy,
+          action: "create",
+          feature: "order",
+          description: `Created ${newOrder.orderNumber} (${newOrder.saleType}) for ${newOrder.customerName || "walk-in"} - ${newOrder.finalAmount} MMK`,
+          targetId: newOrder._id,
+          targetModel: "Order",
+          metadata: { saleType: newOrder.saleType, finalAmount: newOrder.finalAmount },
+          ip: req.ip,
+        });
+
         res.status(201).json({
           success: true,
           message: "Order created successfully",
@@ -1116,6 +1129,16 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
       await order.populate("creditPersonId", "name phone");
       await order.populate("soldBy", "name role");
 
+      logActivity({
+        admin: req.user._id,
+        action: "add_items",
+        feature: "order",
+        description: `Added items to order ${order.orderNumber}`,
+        targetId: order._id,
+        targetModel: "Order",
+        ip: req.ip,
+      });
+
       // 9. Send response
       res.status(200).json({
         success: true,
@@ -1380,6 +1403,16 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
       );
       await order.populate("creditPersonId", "name phone");
       await order.populate("soldBy", "name role");
+
+      logActivity({
+        admin: req.user._id,
+        action: "remove_items",
+        feature: "order",
+        description: `Removed items from order ${order.orderNumber}`,
+        targetId: order._id,
+        targetModel: "Order",
+        ip: req.ip,
+      });
 
       // 11. Send response
       res.status(200).json({

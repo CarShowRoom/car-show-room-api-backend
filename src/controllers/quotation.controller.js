@@ -4,6 +4,7 @@ import Inventory from "../models/inventory.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import { createDateFilter } from "../utils/dateFilter.utils.js";
+import { logActivity } from "../services/activityLog.service.js";
 
 // ============================================================
 // Create Quotation — same body as createOrder, NO side effects
@@ -135,6 +136,17 @@ export const createQuotation = asyncErrorHandler(async (req, res, next) => {
     finalAmount: finalAmt,
     status: "draft",
     createdBy,
+  });
+
+  logActivity({
+    admin: createdBy,
+    action: "create",
+    feature: "quotation",
+    description: `Created quotation ${quotation.quotationNumber} - ${quotation.finalAmount} MMK`,
+    targetId: quotation._id,
+    targetModel: "Quotation",
+    metadata: { saleType: quotation.saleType, finalAmount: quotation.finalAmount },
+    ip: req.ip,
   });
 
   res.status(201).json({
@@ -364,6 +376,16 @@ export const updateQuotation = asyncErrorHandler(async (req, res, next) => {
 
   await quotation.save();
 
+  logActivity({
+    admin: req.user._id,
+    action: "update",
+    feature: "quotation",
+    description: `Updated quotation ${quotation.quotationNumber}`,
+    targetId: quotation._id,
+    targetModel: "Quotation",
+    ip: req.ip,
+  });
+
   res.status(200).json({
     success: true,
     message: "Quotation updated successfully",
@@ -390,6 +412,16 @@ export const softDeleteQuotation = asyncErrorHandler(async (req, res, next) => {
   if (!quotation) {
     return next(new CustomError(404, "Quotation not found"));
   }
+
+  logActivity({
+    admin: req.user._id,
+    action: "delete",
+    feature: "quotation",
+    description: `Deleted quotation ${quotation.quotationNumber}`,
+    targetId: quotation._id,
+    targetModel: "Quotation",
+    ip: req.ip,
+  });
 
   res.status(200).json({
     success: true,
@@ -425,6 +457,17 @@ export const markQuotationAsConverted = asyncErrorHandler(async (req, res, next)
   if (!quotation) {
     return next(new CustomError(404, "Quotation not found or already converted"));
   }
+
+  logActivity({
+    admin: req.user._id,
+    action: "convert",
+    feature: "quotation",
+    description: `Converted quotation ${quotation.quotationNumber} to order ${quotation.convertedOrderId}`,
+    targetId: quotation._id,
+    targetModel: "Quotation",
+    metadata: { convertedOrderId: quotation.convertedOrderId },
+    ip: req.ip,
+  });
 
   res.status(200).json({
     success: true,
