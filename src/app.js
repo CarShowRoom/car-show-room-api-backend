@@ -31,6 +31,7 @@ import shopSettingRouter from "./routes/shopSetting.route.js";
 import purchaseReportRouter from "./routes/purchaseReport.route.js";
 import quotationRouter from "./routes/quotation.route.js";
 import activityLogRouter from "./routes/activityLog.route.js";
+import chatbotRouter from "./routes/chatbot.route.js";
 const app = express();
 app.use(
   helmet({
@@ -45,7 +46,7 @@ app.set("trust proxy", 1);
 app.use(apiRateLimiter(60, 60 * 1000)); //60 requests per minute
 
 app.use(express.urlencoded({ extended: true }));
-app.use(express.json({ limit: "10kb" }));
+app.use(express.json({ limit: "1mb" }));
 app.use(mmTimeZoneMiddleware);
 
 //Route Mounting
@@ -70,6 +71,7 @@ app.use("/api/v1", shopSettingRouter);
 app.use("/api/v1", purchaseReportRouter);
 app.use("/api/v1", quotationRouter);
 app.use("/api/v1", activityLogRouter);
+app.use("/api/v1", chatbotRouter);
 //404-Error Handler
 app.all("/*any", (req, res, next) => {
   const err = new CustomError(
