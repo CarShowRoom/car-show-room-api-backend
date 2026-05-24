@@ -64,7 +64,6 @@ const quotationSchema = new mongoose.Schema({
   toObject: { virtuals: true },
 });
 
-quotationSchema.index({ quotationNumber: 1 });
 quotationSchema.index({ status: 1 });
 quotationSchema.index({ saleType: 1 });
 quotationSchema.index({ createdAt: -1 });

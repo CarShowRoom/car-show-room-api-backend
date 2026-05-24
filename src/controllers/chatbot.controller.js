@@ -1,7 +1,7 @@
 import ChatSession from "../models/chatSession.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
-import { askGemini } from "../services/gemini.service.js";
+import { askGemini } from "../services/openrouter.service.js";
 
 export const chatWithBot = asyncErrorHandler(async (req, res, next) => {
   const { message } = req.body;
