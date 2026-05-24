@@ -18,7 +18,23 @@ export const chatWithBot = asyncErrorHandler(async (req, res, next) => {
 
   session.messages.push({ role: "user", text: message.trim() });
 
-  const replyText = await askGemini(session.messages);
+  let replyText;
+  try {
+    replyText = await askGemini(session.messages);
+  } catch (err) {
+    console.error("Chatbot API error:", err.message);
+    session.messages = [{ role: "user", text: message.trim() }];
+    try {
+      replyText = await askGemini(session.messages);
+    } catch (retryErr) {
+      console.error("Chatbot retry also failed:", retryErr.message);
+      replyText = "ဖြေဆိုရာတွင်အမှားရှိခဲ့ပါတယ်။ ပြန်ကြိုးစားပါ။";
+    }
+  }
+
+  if (replyText && replyText.includes("image.png")) {
+    replyText = "ဖြေဆိုရာတွင်အမှားရှိခဲ့ပါတယ်။ ကျေးဇူးပြု၍ ပြန်လည်မေးမြန်းပေးပါ။";
+  }
 
   session.messages.push({ role: "model", text: replyText });
   await session.save();
