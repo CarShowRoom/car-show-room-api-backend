@@ -10,6 +10,10 @@ function cleanReply(text) {
   let cleaned = text.replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+/g, "");
   // Replace multiple spaces with single space
   cleaned = cleaned.replace(/\s+/g, " ").trim();
+  // Add newline before numbered list items (e.g. " 1. " → "\n1. ") for markdown rendering
+  cleaned = cleaned.replace(/\s+(\d+\.\s+)/g, "\n$1");
+  // Collapse multiple newlines
+  cleaned = cleaned.replace(/\n{2,}/g, "\n");
   // If after cleaning the string is empty or only symbols, use fallback
   if (!cleaned || cleaned.length < 3) {
     return "ဖြေဆိုရာတွင်အမှားရှိခဲ့ပါတယ်။ ကျေးဇူးပြု၍ ပြန်လည်မေးမြန်းပေးပါ။";
