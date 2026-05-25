@@ -268,7 +268,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
 
             // UOM conversion: determine factor and compute unitPrice / baseQuantity
             let factor = 1;
-            let unit = null;
+            let unit = product.unit || inventoryItem.unitOfMeasure || null;
             let baseQuantity = product.quantity;
 
             if (product.unit && inventoryItem.uomConversions?.length > 0) {
@@ -282,7 +282,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
               }
             }
 
-            const unitPrice = inventoryItem.sellingPrice / factor;
+            const unitPrice = (isDirectSale && product.unitPrice != null) ? product.unitPrice : inventoryItem.sellingPrice / factor;
             const productSubTotal = product.quantity * unitPrice;
             calculatedSubTotal += productSubTotal;
 
@@ -521,7 +521,7 @@ export const getAllOrders = asyncErrorHandler(async (req, res, next) => {
   };
 
   // Extract query parameters
-  const { saleType, paymentType, paymentMethod } = req.query;
+  const { saleType, paymentType, paymentMethod, page, limit, search } = req.query;
 
   // Add saleType filter if provided
   if (saleType !== undefined && saleType !== "") {
@@ -573,16 +573,50 @@ export const getAllOrders = asyncErrorHandler(async (req, res, next) => {
     return next(new CustomError(400, error.message || "Invalid date filter"));
   }
 
-  const orders = await Order.find(filter)
-    .populate("storefrontId", "locationName locationCode")
-    .populate("ordersProducts.inventoryId", "productName productCode SKU")
-    .populate("creditPersonId", "name phone")
-    .populate("soldBy", "name role");
+  // Search by product name or code
+  if (search && search.trim()) {
+    const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const matchedInventory = await Inventory.find({
+      $or: [
+        { productName: { $regex: escaped, $options: "i" } },
+        { productCode: { $regex: escaped, $options: "i" } },
+      ],
+    }).select("_id");
+    const inventoryIds = matchedInventory.map((inv) => inv._id);
+    if (inventoryIds.length > 0) {
+      filter["ordersProducts.inventoryId"] = { $in: inventoryIds };
+    } else {
+      // No matching product found — return empty result
+      filter._id = null;
+    }
+  }
+
+  const pageNum = parseInt(page) || 1;
+  const limitNum = parseInt(limit) || 10;
+  const skip = (pageNum - 1) * limitNum;
+
+  const [orders, total] = await Promise.all([
+    Order.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .populate("storefrontId", "locationName locationCode")
+      .populate("ordersProducts.inventoryId", "productName productCode SKU")
+      .populate("creditPersonId", "name phone")
+      .populate("soldBy", "name role"),
+    Order.countDocuments(filter),
+  ]);
 
   res.status(200).json({
     success: true,
     message: "Orders fetched successfully",
     data: orders,
+    pagination: {
+      currentPage: pageNum,
+      totalPages: Math.ceil(total / limitNum) || 1,
+      totalItems: total,
+      itemsPerPage: limitNum,
+    },
   });
 });
 
@@ -1049,7 +1083,7 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
 
         // UOM conversion for this item
         let factor = 1;
-        let unit = null;
+        let unit = item.unit || inventoryItem.unitOfMeasure || null;
         let baseQuantity = item.quantity;
         if (item.unit && inventoryItem.uomConversions?.length > 0) {
           const conversion = inventoryItem.uomConversions.find(
