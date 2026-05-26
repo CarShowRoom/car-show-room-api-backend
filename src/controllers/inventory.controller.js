@@ -88,11 +88,10 @@ export const createInventory = asyncErrorHandler(async (req, res, next) => {
     }
   }
 
-  const newInventory = await Inventory.create(inventoryData);
-
-  // Upload images to R2 if provided
+  // Upload images to R2 FIRST (before saving to DB)
+  // If upload fails, product won't be saved — prevents partial data
+  let uploadedImages = [];
   if (req.files && req.files.length > 0) {
-    const uploadedImages = [];
     for (const file of req.files) {
       const key = generateR2Key(file.originalname, "inventory");
       const url = await uploadToR2(file, key);
@@ -102,9 +101,10 @@ export const createInventory = asyncErrorHandler(async (req, res, next) => {
         isPrimary: uploadedImages.length === 0,
       });
     }
-    newInventory.images = uploadedImages;
-    await newInventory.save();
   }
+
+  inventoryData.images = uploadedImages;
+  const newInventory = await Inventory.create(inventoryData);
 
   logActivity({
     admin: req.user?._id,
