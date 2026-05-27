@@ -32,6 +32,8 @@ import purchaseReportRouter from "./routes/purchaseReport.route.js";
 import quotationRouter from "./routes/quotation.route.js";
 import activityLogRouter from "./routes/activityLog.route.js";
 import chatbotRouter from "./routes/chatbot.route.js";
+import customerRouter from "./routes/customer.route.js";
+import ecommerceRouter from "./routes/ecommerce.route.js";
 const app = express();
 app.use(
   helmet({
@@ -72,6 +74,8 @@ app.use("/api/v1", purchaseReportRouter);
 app.use("/api/v1", quotationRouter);
 app.use("/api/v1", activityLogRouter);
 app.use("/api/v1", chatbotRouter);
+app.use("/api/v1", customerRouter);
+app.use("/api/v1", ecommerceRouter);
 //404-Error Handler
 app.all("/*any", (req, res, next) => {
   const err = new CustomError(
