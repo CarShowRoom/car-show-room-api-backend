@@ -734,8 +734,22 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
     // Aggregate product sales statistics
     const productSalesReport = await Order.aggregate([
       { $match: filter },
-      // Unwind the ordersProducts array to get individual products
       { $unwind: "$ordersProducts" },
+      // Lookup inventory early to get sellingPrice for wholesale comparison
+      {
+        $lookup: {
+          from: "inventories",
+          localField: "ordersProducts.inventoryId",
+          foreignField: "_id",
+          as: "invLookup",
+        },
+      },
+      {
+        $unwind: {
+          path: "$invLookup",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
       // Group by inventoryId to aggregate statistics
       {
         $group: {
@@ -749,56 +763,102 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
               ],
             },
           },
-          orderCount: { $addToSet: "$_id" }, // Count unique orders
+          orderCount: { $addToSet: "$_id" },
           averageUnitPrice: { $avg: "$ordersProducts.unitPrice" },
           minUnitPrice: { $min: "$ordersProducts.unitPrice" },
           maxUnitPrice: { $max: "$ordersProducts.unitPrice" },
+          retailQuantity: {
+            $sum: {
+              $cond: [
+                { $or: [
+                  { $eq: ["$invLookup.sellingPrice", null] },
+                  { $gte: ["$ordersProducts.unitPrice", "$invLookup.sellingPrice"] },
+                ]},
+                "$ordersProducts.quantity",
+                0,
+              ],
+            },
+          },
+          sellingPrice: { $first: "$invLookup.sellingPrice" },
+          productName: { $first: "$invLookup.productName" },
+          productCode: { $first: "$invLookup.productCode" },
+          SKU: { $first: "$invLookup.SKU" },
+          category: { $first: "$invLookup.category" },
+          subCategory: { $first: "$invLookup.subCategory" },
+          brand: { $first: "$invLookup.brand" },
+          unitOfMeasure: { $first: "$invLookup.unitOfMeasure" },
         },
       },
-      // Calculate orderCount as array length
+      // Calculate derived fields
       {
         $addFields: {
           orderCount: { $size: "$orderCount" },
+          wholesaleQuantity: { $subtract: ["$totalQuantity", "$retailQuantity"] },
+          totalIfRetail: {
+            $cond: [
+              { $gt: ["$sellingPrice", 0] },
+              { $multiply: ["$totalQuantity", "$sellingPrice"] },
+              "$totalRevenue",
+            ],
+          },
+        },
+      },
+      {
+        $addFields: {
+          wholesaleDiscount: { $subtract: ["$totalIfRetail", "$totalRevenue"] },
+          wholesalePercentage: {
+            $cond: [
+              { $gt: ["$totalQuantity", 0] },
+              {
+                $concat: [
+                  {
+                    $toString: {
+                      $round: [
+                        {
+                          $multiply: [
+                            { $divide: ["$wholesaleQuantity", "$totalQuantity"] },
+                            100,
+                          ],
+                        },
+                        0,
+                      ],
+                    },
+                  },
+                  "%",
+                ],
+              },
+              "0%",
+            ],
+          },
         },
       },
       // Sort by total quantity descending
       {
         $sort: { totalQuantity: -1 },
       },
-      // Lookup inventory details
-      {
-        $lookup: {
-          from: "inventories",
-          localField: "_id",
-          foreignField: "_id",
-          as: "inventory",
-        },
-      },
-      // Unwind inventory array (should be single item)
-      {
-        $unwind: {
-          path: "$inventory",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
       // Project final structure
       {
         $project: {
           _id: 0,
           inventoryId: "$_id",
-          productName: "$inventory.productName",
-          productCode: "$inventory.productCode",
-          SKU: "$inventory.SKU",
-          category: "$inventory.category",
-          subCategory: "$inventory.subCategory",
-          brand: "$inventory.brand",
-          unitOfMeasure: "$inventory.unitOfMeasure",
+          productName: 1,
+          productCode: 1,
+          SKU: 1,
+          category: 1,
+          subCategory: 1,
+          brand: 1,
+          unitOfMeasure: 1,
           totalQuantity: 1,
           totalRevenue: 1,
           orderCount: 1,
           averageUnitPrice: { $round: ["$averageUnitPrice", 2] },
           minUnitPrice: 1,
           maxUnitPrice: 1,
+          retailQuantity: 1,
+          wholesaleQuantity: 1,
+          totalIfRetail: 1,
+          wholesaleDiscount: 1,
+          wholesalePercentage: 1,
         },
       },
     ]);
@@ -808,12 +868,20 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
       (acc, item) => {
         acc.totalQuantity += item.totalQuantity;
         acc.totalRevenue += item.totalRevenue;
+        acc.totalIfRetail += item.totalIfRetail;
+        acc.totalWholesaleDiscount += item.wholesaleDiscount;
+        acc.totalRetailQuantity += item.retailQuantity;
+        acc.totalWholesaleQuantity += item.wholesaleQuantity;
         acc.totalUniqueProducts += 1;
         return acc;
       },
       {
         totalQuantity: 0,
         totalRevenue: 0,
+        totalIfRetail: 0,
+        totalWholesaleDiscount: 0,
+        totalRetailQuantity: 0,
+        totalWholesaleQuantity: 0,
         totalUniqueProducts: 0,
       }
     );
@@ -840,6 +908,10 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
         totals: {
           totalQuantity: totals.totalQuantity,
           totalRevenue: totals.totalRevenue,
+          totalIfRetail: totals.totalIfRetail,
+          totalWholesaleDiscount: totals.totalWholesaleDiscount,
+          totalRetailQuantity: totals.totalRetailQuantity,
+          totalWholesaleQuantity: totals.totalWholesaleQuantity,
           totalUniqueProducts: totals.totalUniqueProducts,
         },
         products: productSalesReport,
