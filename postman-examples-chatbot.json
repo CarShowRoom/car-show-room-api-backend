@@ -1,0 +1,148 @@
+{
+  "info": {
+    "name": "i-max POS - AI Chatbot",
+    "description": "Gemini AI Chatbot with Tool Calling — POS-specific assistant (owner only). Ask about sales, products, stock, expenses. Conversation history: last 10 messages only.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "chatbot-api"
+  },
+  "item": [
+    {
+      "name": "1. Chat (Ask Question)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"မင်္ဂလာပါ\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/chatbot",
+          "host": ["{{base_url}}"],
+          "path": ["chatbot"]
+        }
+      }
+    },
+    {
+      "name": "2. Chat (Daily Sales)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"ဒီနေ့ရောင်းရတာဘယ်လောက်လဲ\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/chatbot",
+          "host": ["{{base_url}}"],
+          "path": ["chatbot"]
+        }
+      }
+    },
+    {
+      "name": "3. Chat (Top Products)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"ဒီလအတွင်း အရောင်းအကောင်းဆုံး ကုန်ပစ္စည်း ၅ မျိုးပြစမ်း\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/chatbot",
+          "host": ["{{base_url}}"],
+          "path": ["chatbot"]
+        }
+      }
+    },
+    {
+      "name": "4. Chat (Low Stock)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"ကုန်ချင်းပါတဲ့ ကုန်ပစ္စည်းတွေပြစမ်း\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/chatbot",
+          "host": ["{{base_url}}"],
+          "path": ["chatbot"]
+        }
+      }
+    },
+    {
+      "name": "5. Chat (Expense Summary)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"ဒီလကုန်ကျစရိတ်ဘယ်လောက်လဲ\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/chatbot",
+          "host": ["{{base_url}}"],
+          "path": ["chatbot"]
+        }
+      }
+    },
+    {
+      "name": "6. Get Chat History",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/chatbot",
+          "host": ["{{base_url}}"],
+          "path": ["chatbot"]
+        }
+      }
+    },
+    {
+      "name": "7. Clear Chat History",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/chatbot",
+          "host": ["{{base_url}}"],
+          "path": ["chatbot"]
+        }
+      }
+    }
+  ]
+}

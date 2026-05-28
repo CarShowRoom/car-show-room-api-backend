@@ -1,0 +1,123 @@
+{
+  "info": {
+    "name": "i-max POS - Activity Log API",
+    "description": "Activity Log endpoints — all user actions are logged automatically. Filter by admin, action, feature, date range. Logs auto-delete after 180 days (TTL index).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "activity-log-api"
+  },
+  "item": [
+    {
+      "name": "1. Get Activity Logs (with filters)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/activity-log?page=1&limit=20&sortBy=createdAt&sortOrder=desc",
+          "host": ["{{base_url}}"],
+          "path": ["activity-log"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "20" },
+            { "key": "sortBy", "value": "createdAt" },
+            { "key": "sortOrder", "value": "desc" },
+            { "key": "admin", "value": "ADMIN_ID", "description": "Filter by admin ID" },
+            { "key": "action", "value": "create", "description": "Filter by action (create, update, delete, login, logout, etc.)" },
+            { "key": "feature", "value": "order", "description": "Filter by feature (order, inventory, purchase, grn, transfer, quotation, expense, credit, supplier, warehouse_stock, storefront_stock, warehouse_profile, storefront_profile, admin)" },
+            { "key": "startDate", "value": "2026-01-01", "description": "Start date filter (YYYY-MM-DD)" },
+            { "key": "endDate", "value": "2026-12-31", "description": "End date filter (YYYY-MM-DD)" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "2. Get Activity Log by ID",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/activity-log/ACTIVITY_LOG_ID",
+          "host": ["{{base_url}}"],
+          "path": ["activity-log", "ACTIVITY_LOG_ID"]
+        }
+      }
+    },
+    {
+      "name": "3. Get Activity Logs (filter by feature: order)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/activity-log?feature=order&limit=10",
+          "host": ["{{base_url}}"],
+          "path": ["activity-log"],
+          "query": [
+            { "key": "feature", "value": "order" },
+            { "key": "limit", "value": "10" },
+            { "key": "sortOrder", "value": "desc" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "4. Get Activity Logs (filter by action: login)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/activity-log?action=login&limit=10",
+          "host": ["{{base_url}}"],
+          "path": ["activity-log"],
+          "query": [
+            { "key": "action", "value": "login" },
+            { "key": "limit", "value": "10" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "5. Get Activity Logs (filter by admin + date range)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/activity-log?admin=ADMIN_ID&startDate=2026-05-01&endDate=2026-05-31",
+          "host": ["{{base_url}}"],
+          "path": ["activity-log"],
+          "query": [
+            { "key": "admin", "value": "ADMIN_ID" },
+            { "key": "startDate", "value": "2026-05-01" },
+            { "key": "endDate", "value": "2026-05-31" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "6. Get Activity Logs (today's logs only)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/activity-log?startDate=2026-05-21&endDate=2026-05-21",
+          "host": ["{{base_url}}"],
+          "path": ["activity-log"],
+          "query": [
+            { "key": "startDate", "value": "2026-05-21" },
+            { "key": "endDate", "value": "2026-05-21" }
+          ]
+        }
+      }
+    }
+  ]
+}

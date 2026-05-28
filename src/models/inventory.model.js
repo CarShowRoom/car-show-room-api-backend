@@ -76,6 +76,18 @@ const inventorySchema = new mongoose.Schema(
           "Selling price should be greater than or equal to buying price",
       },
     },
+    wholesalePrices: [{
+      quantity: {
+        type: Number,
+        required: [true, "Wholesale quantity is required"],
+        min: [2, "Wholesale quantity must be at least 2"],
+      },
+      price: {
+        type: Number,
+        required: [true, "Wholesale price is required"],
+        min: [0, "Wholesale price cannot be negative"],
+      },
+    }],
     unitOfMeasure: {
       type: String,
       required: [true, "Unit of measure is required"],

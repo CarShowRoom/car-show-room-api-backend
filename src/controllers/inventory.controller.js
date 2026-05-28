@@ -506,6 +506,23 @@ export const importInventoryFromExcel = asyncErrorHandler(
           throw new Error("Tax rate must be between 0 and 100");
         }
 
+        const wholesalePrices = [];
+        for (let t = 1; t <= 5; t++) {
+          const qty = row[`Wholesale Qty ${t}`] || row[`wholesaleQty${t}`];
+          const price = row[`Wholesale Price ${t}`] || row[`wholesalePrice${t}`];
+          if (qty !== undefined && price !== undefined && qty !== "" && price !== "") {
+            const numQty = Number(qty);
+            const numPrice = Number(price);
+            if (isNaN(numQty) || numQty < 2) {
+              throw new Error(`Wholesale Qty ${t} must be a number >= 2`);
+            }
+            if (isNaN(numPrice) || numPrice < 0) {
+              throw new Error(`Wholesale Price ${t} cannot be negative`);
+            }
+            wholesalePrices.push({ quantity: numQty, price: numPrice });
+          }
+        }
+
         const inventoryData = {
           productName: String(productName).trim(),
           productCode: String(productCode).trim().toUpperCase(),
@@ -545,6 +562,10 @@ export const importInventoryFromExcel = asyncErrorHandler(
             : [],
           note: row.note || row["Note"] || "",
         };
+
+        if (wholesalePrices.length > 0) {
+          inventoryData.wholesalePrices = wholesalePrices;
+        }
 
         const newItem = await Inventory.create(inventoryData);
         results.success++;

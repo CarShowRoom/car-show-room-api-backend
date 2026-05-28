@@ -245,7 +245,12 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
             }
 
             // Store current sellingPrice as snapshot unitPrice in order
-            const unitPrice = inventoryItem.sellingPrice;
+            let unitPrice = inventoryItem.sellingPrice;
+            if (inventoryItem.wholesalePrices?.length > 0) {
+              const sorted = [...inventoryItem.wholesalePrices].sort((a, b) => b.quantity - a.quantity);
+              const tier = sorted.find((wp) => product.quantity >= wp.quantity);
+              if (tier) unitPrice = tier.price;
+            }
             const productSubTotal = product.quantity * unitPrice;
             calculatedSubTotal += productSubTotal;
 
@@ -958,7 +963,12 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
       for (const item of items) {
         const inventoryId = new mongoose.Types.ObjectId(item.inventoryId);
         const inventoryItem = inventoryMap.get(inventoryId.toString());
-        const unitPrice = inventoryItem.sellingPrice;
+        let unitPrice = inventoryItem.sellingPrice;
+        if (inventoryItem.wholesalePrices?.length > 0) {
+          const sorted = [...inventoryItem.wholesalePrices].sort((a, b) => b.quantity - a.quantity);
+          const tier = sorted.find((wp) => item.quantity >= wp.quantity);
+          if (tier) unitPrice = tier.price;
+        }
         const stockRecord = stockRecordsMap.get(inventoryId.toString());
 
         // Check if item already exists in order

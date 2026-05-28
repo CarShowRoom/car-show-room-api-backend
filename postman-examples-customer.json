@@ -1,0 +1,142 @@
+{
+  "info": {
+    "name": "i-max POS - Customer Management",
+    "description": "Customer register/login with phone number, profile management",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "customer-api"
+  },
+  "item": [
+    {
+      "name": "1. Register Customer",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"ဦးအေး\",\n  \"phone\": \"09123456789\",\n  \"password\": \"password123\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/customer/register",
+          "host": ["{{base_url}}"],
+          "path": ["customer", "register"]
+        }
+      }
+    },
+    {
+      "name": "2. Login Customer",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"09123456789\",\n  \"password\": \"password123\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/customer/login",
+          "host": ["{{base_url}}"],
+          "path": ["customer", "login"]
+        }
+      }
+    },
+    {
+      "name": "3. Get My Profile",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{customer_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/customer/me",
+          "host": ["{{base_url}}"],
+          "path": ["customer", "me"]
+        }
+      }
+    },
+    {
+      "name": "4. Update My Profile",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" },
+          { "key": "Authorization", "value": "Bearer {{customer_token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"ဦးဘစို\",\n  \"addresses\": [\n    {\n      \"label\": \"အိမ်\",\n      \"addressLine\": \"မင်္ဂလာတောင်ညွန့်မြို့နယ်\",\n      \"city\": \"ရန်ကုန်\",\n      \"phone\": \"09123456789\",\n      \"isDefault\": true\n    }\n  ]\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/customer/me",
+          "host": ["{{base_url}}"],
+          "path": ["customer", "me"]
+        }
+      }
+    },
+    {
+      "name": "5. Register Error — Duplicate Phone",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"ဦးမောင်မောင်\",\n  \"phone\": \"09123456789\",\n  \"password\": \"password123\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/customer/register",
+          "host": ["{{base_url}}"],
+          "path": ["customer", "register"]
+        }
+      }
+    },
+    {
+      "name": "6. Login Error — Wrong Password",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"09123456789\",\n  \"password\": \"wrongpassword\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/customer/login",
+          "host": ["{{base_url}}"],
+          "path": ["customer", "login"]
+        }
+      }
+    },
+    {
+      "name": "7. Auth Error — No Token",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/customer/me",
+          "host": ["{{base_url}}"],
+          "path": ["customer", "me"]
+        }
+      }
+    }
+  ]
+}

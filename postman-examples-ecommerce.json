@@ -1,0 +1,125 @@
+{
+  "info": {
+    "name": "i-max POS - Ecommerce",
+    "description": "Ecommerce APIs — product listing (public), order creation & history (customer auth)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "ecommerce-api"
+  },
+  "item": [
+    {
+      "name": "1. Get Products",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/ecommerce/products?page=1&limit=20",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "products"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "20" },
+            { "key": "search", "value": "", "disabled": true },
+            { "key": "category", "value": "", "disabled": true }
+          ]
+        }
+      }
+    },
+    {
+      "name": "2. Create Order",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" },
+          { "key": "Authorization", "value": "Bearer {{customer_token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"products\": [\n    {\n      \"inventoryId\": \"664a1b2c3d4e5f6a7b8c9d0e\",\n      \"quantity\": 2,\n      \"unitPrice\": 15000\n    },\n    {\n      \"inventoryId\": \"664a1b2c3d4e5f6a7b8c9d0f\",\n      \"quantity\": 1,\n      \"unitPrice\": 8500\n    }\n  ],\n  \"shippingAddress\": {\n    \"label\": \"အိမ်\",\n    \"addressLine\": \"မင်္ဂလာတောင်ညွန့်မြို့နယ်\",\n    \"city\": \"ရန်ကုန်\",\n    \"phone\": \"09123456789\"\n  },\n  \"paymentMethod\": \"cash_on_delivery\",\n  \"note\": \"ညနေ ၄နာရီနောက်ပိုင်းပို့ပေးပါ\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/order",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "order"]
+        }
+      }
+    },
+    {
+      "name": "3. Get My Orders",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{customer_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/ecommerce/orders?page=1&limit=10",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "orders"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "10" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "4. Get Order By ID",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{customer_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/ecommerce/orders/664a1b2c3d4e5f6a7b8c9d10",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "orders", "664a1b2c3d4e5f6a7b8c9d10"]
+        }
+      }
+    },
+    {
+      "name": "5. Create Order Error — No Auth",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"products\": [\n    {\n      \"inventoryId\": \"664a1b2c3d4e5f6a7b8c9d0e\",\n      \"quantity\": 1\n    }\n  ]\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/order",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "order"]
+        }
+      }
+    },
+    {
+      "name": "6. Create Order Error — Insufficient Stock",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" },
+          { "key": "Authorization", "value": "Bearer {{customer_token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"products\": [\n    {\n      \"inventoryId\": \"664a1b2c3d4e5f6a7b8c9d0e\",\n      \"quantity\": 9999\n    }\n  ]\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/order",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "order"]
+        }
+      }
+    }
+  ]
+}

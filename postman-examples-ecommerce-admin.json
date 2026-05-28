@@ -1,0 +1,293 @@
+{
+  "info": {
+    "name": "i-max POS - Ecommerce Admin",
+    "description": "Admin ecommerce order management — list, detail, status update, add/remove products. All requests require admin Bearer token.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "ecommerce-admin-api"
+  },
+  "item": [
+    {
+      "name": "1. Get All Orders",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/ecommerce/admin/orders?page=1&limit=20",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "admin", "orders"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "20" },
+            { "key": "status", "value": "", "disabled": true },
+            { "key": "search", "value": "", "disabled": true },
+            { "key": "startDate", "value": "", "disabled": true },
+            { "key": "endDate", "value": "", "disabled": true }
+          ]
+        }
+      }
+    },
+    {
+      "name": "2. Get Order By ID",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/ecommerce/admin/orders/664a1b2c3d4e5f6a7b8c9d10",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "admin", "orders", "664a1b2c3d4e5f6a7b8c9d10"]
+        }
+      }
+    },
+    {
+      "name": "3. Update Status — Confirmed",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" },
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"confirmed\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/admin/orders/664a1b2c3d4e5f6a7b8c9d10/status",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "admin", "orders", "664a1b2c3d4e5f6a7b8c9d10", "status"]
+        }
+      }
+    },
+    {
+      "name": "4. Update Status — Shipped",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" },
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"shipped\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/admin/orders/664a1b2c3d4e5f6a7b8c9d10/status",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "admin", "orders", "664a1b2c3d4e5f6a7b8c9d10", "status"]
+        }
+      }
+    },
+    {
+      "name": "5. Update Status — Delivered",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" },
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"delivered\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/admin/orders/664a1b2c3d4e5f6a7b8c9d10/status",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "admin", "orders", "664a1b2c3d4e5f6a7b8c9d10", "status"]
+        }
+      }
+    },
+    {
+      "name": "6. Update Status — Cancelled",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" },
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"cancelled\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/admin/orders/664a1b2c3d4e5f6a7b8c9d10/status",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "admin", "orders", "664a1b2c3d4e5f6a7b8c9d10", "status"]
+        }
+      }
+    },
+    {
+      "name": "7. Add Products to Order",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" },
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"action\": \"add\",\n  \"products\": [\n    {\n      \"inventoryId\": \"664a1b2c3d4e5f6a7b8c9d0e\",\n      \"quantity\": 2\n    },\n    {\n      \"inventoryId\": \"664a1b2c3d4e5f6a7b8c9d0f\",\n      \"quantity\": 5,\n      \"unitPrice\": 10000\n    }\n  ]\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/admin/orders/664a1b2c3d4e5f6a7b8c9d10/products",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "admin", "orders", "664a1b2c3d4e5f6a7b8c9d10", "products"]
+        }
+      }
+    },
+    {
+      "name": "8. Remove Products from Order",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" },
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"action\": \"remove\",\n  \"products\": [\n    {\n      \"inventoryId\": \"664a1b2c3d4e5f6a7b8c9d0e\",\n      \"quantity\": 1\n    }\n  ]\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/admin/orders/664a1b2c3d4e5f6a7b8c9d10/products",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "admin", "orders", "664a1b2c3d4e5f6a7b8c9d10", "products"]
+        }
+      }
+    },
+    {
+      "name": "9. Error — Wrong Action",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" },
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"action\": \"invalid\",\n  \"products\": [\n    {\n      \"inventoryId\": \"664a1b2c3d4e5f6a7b8c9d0e\",\n      \"quantity\": 1\n    }\n  ]\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/admin/orders/664a1b2c3d4e5f6a7b8c9d10/products",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "admin", "orders", "664a1b2c3d4e5f6a7b8c9d10", "products"]
+        }
+      }
+    },
+    {
+      "name": "10. Error — Invalid Status",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" },
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"invalid_status\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/admin/orders/664a1b2c3d4e5f6a7b8c9d10/status",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "admin", "orders", "664a1b2c3d4e5f6a7b8c9d10", "status"]
+        }
+      }
+    },
+    {
+      "name": "11. Filter — Pending Orders",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/ecommerce/admin/orders?status=pending&page=1&limit=20",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "admin", "orders"],
+          "query": [
+            { "key": "status", "value": "pending" },
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "20" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "12. Filter — Date Range",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/ecommerce/admin/orders?startDate=2026-05-01&endDate=2026-05-27",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "admin", "orders"],
+          "query": [
+            { "key": "startDate", "value": "2026-05-01" },
+            { "key": "endDate", "value": "2026-05-27" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "13. Filter — Search by Order No",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/ecommerce/admin/orders?search=ECO-2026-05-27",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "admin", "orders"],
+          "query": [
+            { "key": "search", "value": "ECO-2026-05-27" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "14. Filter — Search by Customer Name",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/ecommerce/admin/orders?search=အောင်မြင့်",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "admin", "orders"],
+          "query": [
+            { "key": "search", "value": "အောင်မြင့်" }
+          ]
+        }
+      }
+    }
+  ]
+}
