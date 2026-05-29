@@ -601,6 +601,38 @@ export const importInventoryFromExcel = asyncErrorHandler(
           note: row.note || row["Note"] || "",
         };
 
+        // Parse wholesale prices from prefix-based columns (wp_1 ~ wp_10)
+        const wholesalePrices = [];
+        for (let t = 1; t <= 10; t++) {
+          const unit = row[`wp_${t}_unit`] || null;
+          const qty = row[`wp_${t}_qty`];
+          const price = row[`wp_${t}_price`];
+          if (qty !== undefined && qty !== null && qty !== "" && price !== undefined && price !== null && price !== "") {
+            const entry = { quantity: Number(qty), price: Number(price) };
+            if (unit) entry.unit = String(unit).trim();
+            wholesalePrices.push(entry);
+          }
+        }
+        if (wholesalePrices.length > 0) {
+          inventoryData.wholesalePrices = wholesalePrices;
+        }
+
+        // Parse UOM conversions from prefix-based columns (uom_1 ~ uom_5)
+        const uomConversions = [];
+        for (let t = 1; t <= 5; t++) {
+          const unit = row[`uom_${t}_unit`];
+          const factor = row[`uom_${t}_factor`];
+          if (unit && factor !== undefined && factor !== null && factor !== "") {
+            const entry = { unit: String(unit).trim(), factor: Number(factor) };
+            const def = row[`uom_${t}_default`];
+            if (def) entry.isDefaultSellingUnit = String(def).toLowerCase() === "true";
+            uomConversions.push(entry);
+          }
+        }
+        if (uomConversions.length > 0) {
+          inventoryData.uomConversions = uomConversions;
+        }
+
         const newItem = await Inventory.create(inventoryData);
         results.success++;
         results.created.push({
@@ -621,6 +653,122 @@ export const importInventoryFromExcel = asyncErrorHandler(
     res.status(200).json({
       success: true,
       message: `Import completed: ${results.success} created, ${results.failed} failed out of ${results.total}`,
+      data: results,
+    });
+  },
+);
+
+// Bulk update inventory from Excel (by productCode)
+export const importUpdateInventoryFromExcel = asyncErrorHandler(
+  async (req, res, next) => {
+    if (!req.file) {
+      return next(new CustomError(400, "Please upload an Excel file"));
+    }
+
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(worksheet);
+
+    if (rows.length === 0) {
+      return next(new CustomError(400, "Excel file is empty"));
+    }
+
+    const results = {
+      total: rows.length,
+      success: 0,
+      failed: 0,
+      errors: [],
+      updated: [],
+    };
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 2;
+
+      try {
+        const productCode = row.productCode || row.product_code || row["Product Code"];
+        if (!productCode) {
+          throw new Error("productCode is required");
+        }
+
+        const existingItem = await Inventory.findOne({
+          productCode: String(productCode).trim().toUpperCase(),
+        });
+        if (!existingItem) {
+          throw new Error(`Product code '${productCode}' not found`);
+        }
+
+        // Optional simple fields — only update if provided
+        const simpleFields = ["brand", "category", "subCategory", "description", "status", "note"];
+        for (const field of simpleFields) {
+          const val = row[field] || row[field.replace(/([A-Z])/g, "_$1").toLowerCase()] || row[field.replace(/([a-z])([A-Z])/g, "$1 $2")];
+          if (val) existingItem[field] = String(val).trim();
+        }
+
+        if (row.buyingPrice !== undefined && row.buyingPrice !== null && row.buyingPrice !== "") {
+          existingItem.buyingPrice = Number(row.buyingPrice);
+        }
+        if (row.sellingPrice !== undefined && row.sellingPrice !== null && row.sellingPrice !== "") {
+          existingItem.sellingPrice = Number(row.sellingPrice);
+        }
+        if (row.unitOfMeasure || row.unit_of_measure || row["Unit of Measure"]) {
+          existingItem.unitOfMeasure = String(row.unitOfMeasure || row.unit_of_measure || row["Unit of Measure"]).trim();
+        }
+
+        // Validate sellingPrice >= buyingPrice
+        if (existingItem.sellingPrice < existingItem.buyingPrice) {
+          throw new Error(`Selling price (${existingItem.sellingPrice}) must be >= buying price (${existingItem.buyingPrice})`);
+        }
+
+        // Parse wholesale prices (same logic as import)
+        const wholesalePrices = [];
+        for (let t = 1; t <= 10; t++) {
+          const unit = row[`wp_${t}_unit`] || null;
+          const qty = row[`wp_${t}_qty`];
+          const price = row[`wp_${t}_price`];
+          if (qty !== undefined && qty !== null && qty !== "" && price !== undefined && price !== null && price !== "") {
+            const entry = { quantity: Number(qty), price: Number(price) };
+            if (unit) entry.unit = String(unit).trim();
+            wholesalePrices.push(entry);
+          }
+        }
+        if (wholesalePrices.length > 0) {
+          existingItem.wholesalePrices = wholesalePrices;
+        }
+
+        // Parse UOM conversions (same logic as import)
+        const uomConversions = [];
+        for (let t = 1; t <= 5; t++) {
+          const unit = row[`uom_${t}_unit`];
+          const factor = row[`uom_${t}_factor`];
+          if (unit && factor !== undefined && factor !== null && factor !== "") {
+            const entry = { unit: String(unit).trim(), factor: Number(factor) };
+            const def = row[`uom_${t}_default`];
+            if (def) entry.isDefaultSellingUnit = String(def).toLowerCase() === "true";
+            uomConversions.push(entry);
+          }
+        }
+        if (uomConversions.length > 0) {
+          existingItem.uomConversions = uomConversions;
+        }
+
+        await existingItem.save();
+        results.success++;
+        results.updated.push(existingItem.productCode);
+      } catch (error) {
+        results.failed++;
+        results.errors.push({
+          row: rowNum,
+          productCode: row.productCode || "",
+          message: error.message,
+        });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Update completed: ${results.success} updated, ${results.failed} failed out of ${results.total}`,
       data: results,
     });
   },

@@ -1,5 +1,7 @@
 import express from "express";
 import {
+  getBrands,
+  getCategories,
   getProducts,
   createOrder,
   getMyOrders,
@@ -14,6 +16,8 @@ import { protect, permissionGranted } from "../controllers/administrationPolicy.
 
 const router = express.Router();
 
+router.get("/ecommerce/products/brands", getBrands);
+router.get("/ecommerce/products/categories", getCategories);
 router.get("/ecommerce/products", getProducts);
 router.post("/ecommerce/order", customerProtect, createOrder);
 router.get("/ecommerce/orders", customerProtect, getMyOrders);

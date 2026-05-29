@@ -6,6 +6,7 @@ import {
   getInventoryById,
   updateInventory,
   importInventoryFromExcel,
+  importUpdateInventoryFromExcel,
   getAllCategories,
   inventoryMulter,
   uploadInventoryImages,
@@ -46,6 +47,15 @@ router.post(
   permissionGranted("owner", "admin"),
   upload.single("file"),
   importInventoryFromExcel,
+);
+
+// Bulk update inventory from Excel (by productCode)
+router.post(
+  "/inventory/import-excel-update",
+  protect,
+  permissionGranted("owner", "admin"),
+  upload.single("file"),
+  importUpdateInventoryFromExcel,
 );
 
 // Get all unique categories

@@ -43,6 +43,41 @@
       }
     },
     {
+      "name": "Create Inventory (unit-based wholesale, UOM conversion)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "productName", "value": "Royal D Engine Oil 20W-50", "type": "text" },
+            { "key": "productCode", "value": "RD2050", "type": "text" },
+            { "key": "category", "value": "Engine Oil", "type": "text" },
+            { "key": "subCategory", "value": "4-Stroke Oil", "type": "text" },
+            { "key": "brand", "value": "Royal D", "type": "text" },
+            { "key": "description", "value": "High performance 4-stroke engine oil", "type": "text" },
+            { "key": "buyingPrice", "value": "4000", "type": "text" },
+            { "key": "sellingPrice", "value": "5500", "type": "text" },
+            { "key": "unitOfMeasure", "value": "ဘူး", "type": "text" },
+            { "key": "reorderPoint", "value": "50", "type": "text" },
+            { "key": "reorderQuantity", "value": "200", "type": "text" },
+            { "key": "status", "value": "active", "type": "text" },
+            { "key": "tags", "value": "engine-oil,royal-d,4-stroke", "type": "text" },
+            { "key": "uomConversions", "value": "[{\"unit\":\"ပုံး\",\"factor\":24,\"isDefaultSellingUnit\":false}]", "type": "text" },
+            { "key": "wholesalePrices", "value": "[{\"quantity\":12,\"price\":5200},{\"quantity\":24,\"price\":5000},{\"quantity\":50,\"price\":4800},{\"unit\":\"ပုံး\",\"quantity\":1,\"price\":95000},{\"unit\":\"ပုံး\",\"quantity\":5,\"price\":90000}]", "type": "text" },
+            { "key": "images", "type": "file", "src": "" }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/inventory",
+          "host": ["{{base_url}}"],
+          "path": ["inventory"]
+        }
+      }
+    },
+    {
       "name": "Create Inventory (minimal fields)",
       "request": {
         "method": "POST",
@@ -117,7 +152,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"productName\": \"Coca Cola 500ml Pet Bottle\",\n  \"sellingPrice\": 80,\n  \"wholesalePrices\": [\n    { \"quantity\": 50, \"price\": 70 },\n    { \"quantity\": 200, \"price\": 65 },\n    { \"quantity\": 500, \"price\": 60 }\n  ]\n}",
+          "raw": "{\n  \"productName\": \"Coca Cola 500ml Pet Bottle\",\n  \"sellingPrice\": 80,\n  \"wholesalePrices\": [\n    { \"quantity\": 50, \"price\": 70 },\n    { \"quantity\": 200, \"price\": 65 },\n    { \"quantity\": 500, \"price\": 60 },\n    { \"unit\": \"case\", \"quantity\": 1, \"price\": 700 },\n    { \"unit\": \"case\", \"quantity\": 10, \"price\": 650 }\n  ]\n}",
           "options": {
             "raw": { "language": "json" }
           }

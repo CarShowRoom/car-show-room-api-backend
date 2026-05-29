@@ -146,6 +146,11 @@ const inventorySchema = new mongoose.Schema(
     ],
     wholesalePrices: {
       type: [{
+        unit: {
+          type: String,
+          default: null,
+          trim: true,
+        },
         quantity: {
           type: Number,
           min: [1, "Quantity must be at least 1"],
@@ -175,7 +180,18 @@ const inventorySchema = new mongoose.Schema(
   {
     timestamps: true,
     id: false,
-    toJSON: { virtuals: true },
+    toJSON: {
+      virtuals: true,
+      transform: function (doc, ret) {
+        if (ret.wholesalePrices && Array.isArray(ret.wholesalePrices)) {
+          ret.wholesalePrices = ret.wholesalePrices.map((wp) => ({
+            unit: null,
+            ...wp,
+          }));
+        }
+        return ret;
+      },
+    },
     toObject: { virtuals: true },
   },
 );
@@ -202,10 +218,13 @@ inventorySchema.virtual("profitAmount").get(function () {
 // Pre-save middleware to validate wholesale prices and UOM conversions
 inventorySchema.pre("save", function () {
   if (this.wholesalePrices && this.wholesalePrices.length > 0) {
-    const quantities = this.wholesalePrices.map((wp) => wp.quantity);
-    const uniqueQuantities = new Set(quantities);
-    if (quantities.length !== uniqueQuantities.size) {
-      throw new Error("Duplicate quantities are not allowed in wholesale prices");
+    const seen = new Set();
+    for (const wp of this.wholesalePrices) {
+      const key = `${wp.unit || ""}:${wp.quantity}`;
+      if (seen.has(key)) {
+        throw new Error(`Duplicate wholesale price entry for unit "${wp.unit || "base"}" with quantity ${wp.quantity}`);
+      }
+      seen.add(key);
     }
   }
   if (this.uomConversions && this.uomConversions.length > 0) {

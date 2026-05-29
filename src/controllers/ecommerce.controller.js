@@ -10,11 +10,103 @@ import { logActivity } from "../services/activityLog.service.js";
 
 const ecommerceStorefrontId = process.env.ECOMMERCE_STOREFRONT_ID;
 
+export const getBrands = asyncErrorHandler(async (req, res, next) => {
+  if (!ecommerceStorefrontId) {
+    return next(new CustomError(500, "Ecommerce storefront not configured"));
+  }
+  if (!mongoose.Types.ObjectId.isValid(ecommerceStorefrontId)) {
+    return next(new CustomError(500, "Invalid ecommerce storefront ID"));
+  }
+
+  const storefrontObjId = new mongoose.Types.ObjectId(ecommerceStorefrontId);
+
+  const brands = await StorefrontInventory.aggregate([
+    { $match: { storefrontId: storefrontObjId } },
+    {
+      $lookup: {
+        from: "inventories",
+        localField: "inventoryId",
+        foreignField: "_id",
+        as: "inventory",
+      },
+    },
+    { $unwind: "$inventory" },
+    { $match: { "inventory.status": "active" } },
+    {
+      $group: {
+        _id: "$inventory.brand",
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        brand: "$_id",
+      },
+    },
+    { $sort: { brand: 1 } },
+  ]);
+
+  const brandList = brands.map((b) => b.brand).filter(Boolean);
+
+  res.status(200).json({
+    success: true,
+    data: brandList,
+  });
+});
+
+export const getCategories = asyncErrorHandler(async (req, res, next) => {
+  const { brand } = req.query;
+
+  if (!ecommerceStorefrontId) {
+    return next(new CustomError(500, "Ecommerce storefront not configured"));
+  }
+  if (!mongoose.Types.ObjectId.isValid(ecommerceStorefrontId)) {
+    return next(new CustomError(500, "Invalid ecommerce storefront ID"));
+  }
+
+  const storefrontObjId = new mongoose.Types.ObjectId(ecommerceStorefrontId);
+
+  const pipe = [
+    { $match: { storefrontId: storefrontObjId } },
+    {
+      $lookup: {
+        from: "inventories",
+        localField: "inventoryId",
+        foreignField: "_id",
+        as: "inventory",
+      },
+    },
+    { $unwind: "$inventory" },
+    { $match: { "inventory.status": "active" } },
+  ];
+
+  if (brand) {
+    const escaped = brand.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    pipe.push({
+      $match: { "inventory.brand": { $regex: `^${escaped}$`, $options: "i" } },
+    });
+  }
+
+  pipe.push(
+    { $group: { _id: "$inventory.category" } },
+    { $project: { _id: 0, category: "$_id" } },
+    { $sort: { category: 1 } },
+  );
+
+  const categories = await StorefrontInventory.aggregate(pipe);
+
+  res.status(200).json({
+    success: true,
+    data: categories.map((c) => c.category).filter(Boolean),
+  });
+});
+
 export const getProducts = asyncErrorHandler(async (req, res, next) => {
-  const { page, limit, category, search } = req.query;
+  const { page, limit, category, search, brand } = req.query;
+  const hasPagination = page !== undefined;
   const pageNum = parseInt(page) || 1;
   const limitNum = parseInt(limit) || 20;
-  const skip = (pageNum - 1) * limitNum;
+  const skip = hasPagination ? (pageNum - 1) * limitNum : 0;
 
   if (!ecommerceStorefrontId) {
     return next(new CustomError(500, "Ecommerce storefront not configured"));
@@ -46,6 +138,13 @@ export const getProducts = asyncErrorHandler(async (req, res, next) => {
       pipe.push({ $match: { "inventory.category": category } });
     }
 
+    if (brand) {
+      const escaped = brand.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      pipe.push({
+        $match: { "inventory.brand": { $regex: `^${escaped}$`, $options: "i" } },
+      });
+    }
+
     if (search) {
       const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       pipe.push({
@@ -61,7 +160,9 @@ export const getProducts = asyncErrorHandler(async (req, res, next) => {
     if (forCount) {
       pipe.push({ $count: "total" });
     } else {
-      pipe.push({ $skip: skip }, { $limit: limitNum });
+      if (hasPagination) {
+        pipe.push({ $skip: skip }, { $limit: limitNum });
+      }
       pipe.push({
         $project: {
           _id: 1,
@@ -87,23 +188,32 @@ export const getProducts = asyncErrorHandler(async (req, res, next) => {
     return pipe;
   };
 
-  const [products, countResult] = await Promise.all([
-    StorefrontInventory.aggregate(buildPipeline(false)),
-    StorefrontInventory.aggregate(buildPipeline(true)),
-  ]);
+  if (hasPagination) {
+    const [products, countResult] = await Promise.all([
+      StorefrontInventory.aggregate(buildPipeline(false)),
+      StorefrontInventory.aggregate(buildPipeline(true)),
+    ]);
 
-  const totalCount = countResult[0]?.total || 0;
+    const totalCount = countResult[0]?.total || 0;
 
-  res.status(200).json({
-    success: true,
-    data: products,
-    pagination: {
-      currentPage: pageNum,
-      totalPages: Math.ceil(totalCount / limitNum) || 1,
-      totalItems: totalCount,
-      itemsPerPage: limitNum,
-    },
-  });
+    res.status(200).json({
+      success: true,
+      data: products,
+      pagination: {
+        currentPage: pageNum,
+        totalPages: Math.ceil(totalCount / limitNum) || 1,
+        totalItems: totalCount,
+        itemsPerPage: limitNum,
+      },
+    });
+  } else {
+    const products = await StorefrontInventory.aggregate(buildPipeline(false));
+
+    res.status(200).json({
+      success: true,
+      data: products,
+    });
+  }
 });
 
 export const createOrder = asyncErrorHandler(async (req, res, next) => {
@@ -203,9 +313,15 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     if (item.unitPrice) {
       unitPrice = item.unitPrice;
     } else if (inventory.wholesalePrices?.length > 0) {
-      const sorted = [...inventory.wholesalePrices].sort((a, b) => b.quantity - a.quantity);
-      const tier = sorted.find((wp) => requestedQty >= wp.quantity);
-      if (tier) unitPrice = tier.price;
+      const itemUnit = item.unit || null;
+      const matchingWholesale = inventory.wholesalePrices.filter(
+        (wp) => wp.unit === itemUnit || (!wp.unit && !itemUnit),
+      );
+      if (matchingWholesale.length > 0) {
+        const sorted = [...matchingWholesale].sort((a, b) => b.quantity - a.quantity);
+        const tier = sorted.find((wp) => requestedQty >= wp.quantity);
+        if (tier) unitPrice = tier.price;
+      }
     }
     const subtotal = requestedQty * unitPrice;
     totalAmount += subtotal;
@@ -406,9 +522,13 @@ export const updateEcommerceOrderStatus = asyncErrorHandler(async (req, res, nex
   });
 });
 
-const applyWholesalePrice = (inventory, quantity) => {
+const applyWholesalePrice = (inventory, quantity, unit = null) => {
   if (!inventory.wholesalePrices?.length) return inventory.sellingPrice;
-  const sorted = [...inventory.wholesalePrices].sort((a, b) => b.quantity - a.quantity);
+  const matchingWholesale = inventory.wholesalePrices.filter(
+    (wp) => wp.unit === unit || (!wp.unit && !unit),
+  );
+  if (matchingWholesale.length === 0) return inventory.sellingPrice;
+  const sorted = [...matchingWholesale].sort((a, b) => b.quantity - a.quantity);
   const tier = sorted.find((wp) => quantity >= wp.quantity);
   return tier ? tier.price : inventory.sellingPrice;
 };
@@ -507,18 +627,19 @@ export const updateEcommerceOrderProducts = asyncErrorHandler(async (req, res, n
           if (existingIndex !== -1) {
             const existing = order.products[existingIndex];
             newQty = existing.quantity + item.quantity;
-            unitPrice = item.unitPrice || applyWholesalePrice(inventory, newQty);
+            unitPrice = item.unitPrice || applyWholesalePrice(inventory, newQty, existing.unit);
             existing.quantity = newQty;
             existing.unitPrice = unitPrice;
             existing.subtotal = newQty * unitPrice;
           } else {
             newQty = item.quantity;
-            unitPrice = item.unitPrice || applyWholesalePrice(inventory, newQty);
+            const itemUnit = item.unit || inventory.unitOfMeasure || null;
+            unitPrice = item.unitPrice || applyWholesalePrice(inventory, newQty, itemUnit);
             order.products.push({
               inventoryId: new mongoose.Types.ObjectId(invId),
               productName: inventory.productName,
               productCode: inventory.productCode,
-              unit: item.unit || inventory.unitOfMeasure || null,
+              unit: itemUnit,
               quantity: newQty,
               unitPrice,
               subtotal: newQty * unitPrice,
@@ -552,7 +673,7 @@ export const updateEcommerceOrderProducts = asyncErrorHandler(async (req, res, n
             order.products.splice(existingIndex, 1);
           } else {
             const inventory = inventoryMap[invId];
-            const unitPrice = applyWholesalePrice(inventory, newQty);
+            const unitPrice = applyWholesalePrice(inventory, newQty, existing.unit);
             existing.quantity = newQty;
             existing.unitPrice = unitPrice;
             existing.subtotal = newQty * unitPrice;
