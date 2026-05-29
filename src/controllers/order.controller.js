@@ -345,7 +345,10 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
           };
 
           if (orderDate) {
-            orderData.createdAt = new Date(orderDate);
+            const parsed = new Date(orderDate);
+            const now = new Date();
+            parsed.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+            orderData.createdAt = parsed;
           }
 
           newOrder = await Order.create([orderData], { session });

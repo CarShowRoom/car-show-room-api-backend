@@ -378,21 +378,6 @@ export const importInventoryFromExcel = asyncErrorHandler(
       created: [],
     };
 
-    const validUnitOfMeasures = [
-      "piece",
-      "kg",
-      "gram",
-      "liter",
-      "ml",
-      "meter",
-      "cm",
-      "box",
-      "pack",
-      "carton",
-      "dozen",
-      "pair",
-    ];
-
     const validStatuses = ["active", "inactive", "discontinued"];
 
     for (let i = 0; i < rows.length; i++) {
@@ -489,11 +474,6 @@ export const importInventoryFromExcel = asyncErrorHandler(
           row.unit_of_measure ||
           row["Unit of Measure"] ||
           "piece";
-        if (
-          !validUnitOfMeasures.includes(String(unitOfMeasure).toLowerCase())
-        ) {
-          throw new Error(`Invalid unit of measure: '${unitOfMeasure}'`);
-        }
 
         const status = row.status || row["Status"] || "active";
         if (!validStatuses.includes(String(status).toLowerCase())) {

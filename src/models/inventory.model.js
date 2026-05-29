@@ -91,23 +91,7 @@ const inventorySchema = new mongoose.Schema(
     unitOfMeasure: {
       type: String,
       required: [true, "Unit of measure is required"],
-      enum: {
-        values: [
-          "piece",
-          "kg",
-          "gram",
-          "liter",
-          "ml",
-          "meter",
-          "cm",
-          "box",
-          "pack",
-          "carton",
-          "dozen",
-          "pair",
-        ],
-        message: "Invalid unit of measure",
-      },
+      trim: true,
       default: "piece",
     },
     reorderPoint: {
