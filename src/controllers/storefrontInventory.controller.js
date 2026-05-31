@@ -204,6 +204,7 @@ export const getAllStorefrontInventory = asyncErrorHandler(
       isLowStock,
       search,
       category,
+      limitedOnly,
       sortBy = "createdAt",
       sortOrder = "desc",
     } = req.query;
@@ -256,6 +257,10 @@ export const getAllStorefrontInventory = asyncErrorHandler(
       pipeline.push({ $match: { "inventoryId.category": category } });
     }
 
+    if (limitedOnly === "true") {
+      pipeline.push({ $match: { "inventoryId.ecommerceMaxPerUser": { $ne: null } } });
+    }
+
     pipeline.push(
       {
         $lookup: {
@@ -266,6 +271,7 @@ export const getAllStorefrontInventory = asyncErrorHandler(
         },
       },
       { $unwind: "$storefrontId" },
+      { $addFields: { hasPurchaseLimit: { $ne: ["$inventoryId.ecommerceMaxPerUser", null] } } },
       {
         $project: {
           _id: 1,
@@ -275,6 +281,7 @@ export const getAllStorefrontInventory = asyncErrorHandler(
           lastUpdated: 1,
           createdAt: 1,
           updatedAt: 1,
+          hasPurchaseLimit: 1,
           "inventoryId._id": 1,
           "inventoryId.productName": 1,
           "inventoryId.productCode": 1,
@@ -285,6 +292,9 @@ export const getAllStorefrontInventory = asyncErrorHandler(
           "inventoryId.status": 1,
           "inventoryId.unitOfMeasure": 1,
           "inventoryId.uomConversions": 1,
+          "inventoryId.ecommerceMaxPerUser": 1,
+          "inventoryId.ecommercePurchaseResetMode": 1,
+          "inventoryId.ecommercePurchaseResetDays": 1,
           "storefrontId._id": 1,
           "storefrontId.locationName": 1,
           "storefrontId.locationCode": 1,

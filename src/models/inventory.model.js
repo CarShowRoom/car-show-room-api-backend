@@ -168,6 +168,21 @@ const inventorySchema = new mongoose.Schema(
       maxlength: [1000, "Note cannot exceed 1000 characters"],
       default: "",
     },
+    ecommerceMaxPerUser: {
+      type: Number,
+      default: null,
+      min: [1, "Minimum purchase limit is 1"],
+    },
+    ecommercePurchaseResetMode: {
+      type: String,
+      enum: ["timeline", "manual"],
+      default: "timeline",
+    },
+    ecommercePurchaseResetDays: {
+      type: Number,
+      default: 30,
+      min: [1, "Minimum reset days is 1"],
+    },
     // createdBy: {
     //   type: mongoose.Schema.Types.ObjectId,
     //   ref: "User",

@@ -5,7 +5,9 @@ dotenv.config({ path: "./.env" });
 export const Db = async () => {
   try {
     mongoose.set("strictQuery", false);
-    const conn = await mongoose.connect(process.env.MONGODB_URI);
+    const conn = await mongoose.connect(process.env.MONGODB_URI, {
+      maxPoolSize: 20,
+    });
     console.log(`Database Connected: ${conn.connection.host}`);
 
     // Drop unique index on purchasingId for GRN model (one-time migration)

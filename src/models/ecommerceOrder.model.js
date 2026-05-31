@@ -100,6 +100,7 @@ ecommerceOrderSchema.pre("save", async function () {
 
 ecommerceOrderSchema.index({ customerId: 1, createdAt: -1 });
 ecommerceOrderSchema.index({ orderNumber: 1 });
+ecommerceOrderSchema.index({ customerId: 1, "products.inventoryId": 1, createdAt: -1 });
 
 const EcommerceOrder = mongoose.model("EcommerceOrder", ecommerceOrderSchema);
 export default EcommerceOrder;

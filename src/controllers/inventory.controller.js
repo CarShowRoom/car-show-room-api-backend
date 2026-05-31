@@ -43,6 +43,14 @@ export const createInventory = asyncErrorHandler(async (req, res, next) => {
     }
   }
 
+  // Parse ecommerce purchase limit fields from FormData
+  if (inventoryData.ecommerceMaxPerUser !== undefined && inventoryData.ecommerceMaxPerUser !== "") {
+    inventoryData.ecommerceMaxPerUser = Number(inventoryData.ecommerceMaxPerUser);
+    if (isNaN(inventoryData.ecommerceMaxPerUser) || inventoryData.ecommerceMaxPerUser < 1) {
+      return next(new CustomError(400, "ecommerceMaxPerUser must be a positive number"));
+    }
+  }
+
   // Remove empty string fields from FormData (no file selected, empty text field, etc.)
   Object.keys(inventoryData).forEach((key) => {
     if (inventoryData[key] === "") delete inventoryData[key];

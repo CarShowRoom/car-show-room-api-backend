@@ -4,6 +4,7 @@ import Inventory from "../models/inventory.model.js";
 import LocationProfile from "../models/locationProfile.model.js";
 import EcommerceOrder from "../models/ecommerceOrder.model.js";
 import Customer from "../models/customer.model.js";
+import PurchaseReset from "../models/purchaseReset.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import { logActivity } from "../services/activityLog.service.js";
@@ -102,7 +103,7 @@ export const getCategories = asyncErrorHandler(async (req, res, next) => {
 });
 
 export const getProducts = asyncErrorHandler(async (req, res, next) => {
-  const { page, limit, category, search, brand } = req.query;
+  const { page, limit, category, search, brand, limitedOnly } = req.query;
   const hasPagination = page !== undefined;
   const pageNum = parseInt(page) || 1;
   const limitNum = parseInt(limit) || 20;
@@ -134,6 +135,10 @@ export const getProducts = asyncErrorHandler(async (req, res, next) => {
       { $match: { "inventory.status": "active" } },
     ];
 
+    if (limitedOnly === "true") {
+      pipe.push({ $match: { "inventory.ecommerceMaxPerUser": { $ne: null } } });
+    }
+
     if (category) {
       pipe.push({ $match: { "inventory.category": category } });
     }
@@ -163,10 +168,13 @@ export const getProducts = asyncErrorHandler(async (req, res, next) => {
       if (hasPagination) {
         pipe.push({ $skip: skip }, { $limit: limitNum });
       }
-      pipe.push({
+      pipe.push(
+        { $addFields: { hasPurchaseLimit: { $ne: ["$inventory.ecommerceMaxPerUser", null] } } },
+        {
         $project: {
           _id: 1,
           quantity: 1,
+          hasPurchaseLimit: 1,
           product: {
             _id: "$inventory._id",
             productName: "$inventory.productName",
@@ -180,6 +188,9 @@ export const getProducts = asyncErrorHandler(async (req, res, next) => {
             uomConversions: "$inventory.uomConversions",
             wholesalePrices: "$inventory.wholesalePrices",
             images: "$inventory.images",
+            ecommerceMaxPerUser: "$inventory.ecommerceMaxPerUser",
+            ecommercePurchaseResetMode: "$inventory.ecommercePurchaseResetMode",
+            ecommercePurchaseResetDays: "$inventory.ecommercePurchaseResetDays",
           },
         },
       });
@@ -277,6 +288,63 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     stockMap[sr.inventoryId.toString()] = sr;
   }
 
+  // —— P1: Batch limit check queries outside loop ——
+  const limitedInvIds = [];
+  for (const inv of inventories) {
+    if (inv.ecommerceMaxPerUser) limitedInvIds.push(inv._id.toString());
+  }
+
+  let orderedMap = {};
+  let resetMap = {};
+
+  if (limitedInvIds.length > 0) {
+    const allResets = await PurchaseReset.find({
+      customerId: { $in: [customerId, null] },
+      inventoryId: { $in: limitedInvIds },
+    }).sort({ resetAt: -1 });
+
+    for (const r of allResets) {
+      if (!resetMap[r.inventoryId.toString()]) {
+        resetMap[r.inventoryId.toString()] = r;
+      }
+    }
+
+    let earliestCutoff = new Date();
+    for (const inv of inventories) {
+      if (!inv.ecommerceMaxPerUser) continue;
+      const latestReset = resetMap[inv._id.toString()];
+      let cutoff;
+      if (inv.ecommercePurchaseResetMode === "manual") {
+        cutoff = latestReset ? latestReset.resetAt : new Date(0);
+      } else {
+        const days = inv.ecommercePurchaseResetDays || 30;
+        const windowStart = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        cutoff = latestReset
+          ? new Date(Math.max(latestReset.resetAt, windowStart))
+          : windowStart;
+      }
+      if (cutoff < earliestCutoff) earliestCutoff = cutoff;
+    }
+
+    const allOrders = await EcommerceOrder.find({
+      customerId,
+      createdAt: { $gte: earliestCutoff },
+      isDeleted: false,
+      status: { $ne: "cancelled" },
+      "products.inventoryId": { $in: limitedInvIds },
+    });
+
+    orderedMap = {};
+    for (const order of allOrders) {
+      for (const p of order.products) {
+        const pid = p.inventoryId.toString();
+        if (limitedInvIds.includes(pid)) {
+          orderedMap[pid] = (orderedMap[pid] || 0) + p.quantity;
+        }
+      }
+    }
+  }
+
   // Validate each product
   let totalAmount = 0;
   const validatedProducts = [];
@@ -307,6 +375,20 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
 
     if (stockRecord.quantity < requestedQty) {
       return next(new CustomError(400, `Product at index ${i}: Insufficient stock (available: ${stockRecord.quantity}, requested: ${requestedQty})`));
+    }
+
+    if (inventory.ecommerceMaxPerUser) {
+      const alreadyOrdered = orderedMap[invId] || 0;
+      const totalQty = alreadyOrdered + requestedQty;
+      if (totalQty > inventory.ecommerceMaxPerUser) {
+        const remaining = Math.max(0, inventory.ecommerceMaxPerUser - alreadyOrdered);
+        const modeLabel = inventory.ecommercePurchaseResetMode === "timeline"
+          ? `per ${inventory.ecommercePurchaseResetDays} days`
+          : "until admin reset";
+        return next(new CustomError(400,
+          `"${inventory.productName}" limit: max ${inventory.ecommerceMaxPerUser} ${modeLabel}. You have ${remaining} left.`
+        ));
+      }
     }
 
     let unitPrice = inventory.sellingPrice;
@@ -600,6 +682,68 @@ export const updateEcommerceOrderProducts = asyncErrorHandler(async (req, res, n
         stockMap[sr.inventoryId.toString()] = sr;
       }
 
+      // —— P1: Batch limit check queries outside add loop ——
+      let orderedMap = {};
+      let resetMap = {};
+
+      if (action === "add") {
+        const addInvIds = products.map((p) => p.inventoryId);
+        const limitedInvIds = [];
+        for (const inv of inventories) {
+          if (inv.ecommerceMaxPerUser) {
+            limitedInvIds.push(inv._id.toString());
+          }
+        }
+
+        if (limitedInvIds.length > 0) {
+          const allResets = await PurchaseReset.find({
+            customerId: { $in: [order.customerId, null] },
+            inventoryId: { $in: limitedInvIds },
+          }).sort({ resetAt: -1 }).session(session);
+
+          for (const r of allResets) {
+            if (!resetMap[r.inventoryId.toString()]) {
+              resetMap[r.inventoryId.toString()] = r;
+            }
+          }
+
+          let earliestCutoff = new Date();
+          for (const inv of inventories) {
+            if (!inv.ecommerceMaxPerUser) continue;
+            const latestReset = resetMap[inv._id.toString()];
+            let cutoff;
+            if (inv.ecommercePurchaseResetMode === "manual") {
+              cutoff = latestReset ? latestReset.resetAt : new Date(0);
+            } else {
+              const days = inv.ecommercePurchaseResetDays || 30;
+              const windowStart = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+              cutoff = latestReset
+                ? new Date(Math.max(latestReset.resetAt, windowStart))
+                : windowStart;
+            }
+            if (cutoff < earliestCutoff) earliestCutoff = cutoff;
+          }
+
+          const allOrders = await EcommerceOrder.find({
+            customerId: order.customerId,
+            createdAt: { $gte: earliestCutoff },
+            isDeleted: false,
+            status: { $ne: "cancelled" },
+            "products.inventoryId": { $in: limitedInvIds },
+          }).session(session);
+
+          orderedMap = {};
+          for (const o of allOrders) {
+            for (const p of o.products) {
+              const pid = p.inventoryId.toString();
+              if (limitedInvIds.includes(pid)) {
+                orderedMap[pid] = (orderedMap[pid] || 0) + p.quantity;
+              }
+            }
+          }
+        }
+      }
+
       if (action === "add") {
         for (const item of products) {
           const invId = item.inventoryId;
@@ -615,6 +759,23 @@ export const updateEcommerceOrderProducts = asyncErrorHandler(async (req, res, n
 
           if (stockRecord.quantity < item.quantity) {
             throw new CustomError(400, `Insufficient stock for ${inventory.productName} (available: ${stockRecord.quantity}, requested: ${item.quantity})`);
+          }
+
+          if (inventory.ecommerceMaxPerUser) {
+            const alreadyOrdered = orderedMap[invId] || 0;
+            const existingInThisOrder = order.products.find(p => p.inventoryId.toString() === invId);
+            const currentInThisOrder = existingInThisOrder ? existingInThisOrder.quantity : 0;
+            const totalQty = alreadyOrdered + currentInThisOrder + item.quantity;
+
+            if (totalQty > inventory.ecommerceMaxPerUser) {
+              const remaining = Math.max(0, inventory.ecommerceMaxPerUser - (alreadyOrdered + currentInThisOrder));
+              const modeLabel = inventory.ecommercePurchaseResetMode === "timeline"
+                ? `per ${inventory.ecommercePurchaseResetDays} days`
+                : "until admin reset";
+              throw new CustomError(400,
+                `"${inventory.productName}" limit: max ${inventory.ecommerceMaxPerUser} ${modeLabel}. You have ${remaining} left.`
+              );
+            }
           }
 
           const existingIndex = order.products.findIndex(
@@ -727,4 +888,161 @@ export const updateEcommerceOrderProducts = asyncErrorHandler(async (req, res, n
   } finally {
     await session.endSession();
   }
+});
+
+export const resetPurchaseLimit = asyncErrorHandler(async (req, res, next) => {
+  const { customerId, inventoryId } = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(customerId)) {
+    return next(new CustomError(400, "Invalid customer ID format"));
+  }
+  if (!mongoose.Types.ObjectId.isValid(inventoryId)) {
+    return next(new CustomError(400, "Invalid inventory ID format"));
+  }
+
+  const customer = await Customer.findById(customerId);
+  if (!customer) {
+    return next(new CustomError(404, "Customer not found"));
+  }
+
+  const inventory = await Inventory.findById(inventoryId);
+  if (!inventory) {
+    return next(new CustomError(404, "Inventory item not found"));
+  }
+  if (!inventory.ecommerceMaxPerUser) {
+    return next(new CustomError(400, "This product has no purchase limit"));
+  }
+
+  await PurchaseReset.create({
+    customerId,
+    inventoryId,
+    resetAt: new Date(),
+    resetBy: req.user._id,
+  });
+
+  logActivity({
+    admin: req.user._id,
+    action: "reset_purchase_limit",
+    feature: "ecommerce",
+    description: `Reset purchase limit for customer ${customer.name || customer._id} on product ${inventory.productCode} - ${inventory.productName}`,
+    targetId: inventory._id,
+    targetModel: "Inventory",
+    ip: req.ip,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: `Purchase limit reset successfully for "${inventory.productName}".`,
+  });
+});
+
+export const resetAllPurchaseLimits = asyncErrorHandler(async (req, res, next) => {
+  const { inventoryId } = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(inventoryId)) {
+    return next(new CustomError(400, "Invalid inventory ID format"));
+  }
+
+  const inventory = await Inventory.findById(inventoryId);
+  if (!inventory) {
+    return next(new CustomError(404, "Inventory item not found"));
+  }
+  if (!inventory.ecommerceMaxPerUser) {
+    return next(new CustomError(400, "This product has no purchase limit"));
+  }
+
+  await PurchaseReset.create({
+    customerId: null,
+    inventoryId,
+    resetAt: new Date(),
+    resetBy: req.user._id,
+  });
+
+  logActivity({
+    admin: req.user._id,
+    action: "reset_all_purchase_limits",
+    feature: "ecommerce",
+    description: `Reset purchase limit for ALL customers on product ${inventory.productCode} - ${inventory.productName}`,
+    targetId: inventory._id,
+    targetModel: "Inventory",
+    ip: req.ip,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: `Purchase limit reset for ALL customers on "${inventory.productName}".`,
+  });
+});
+
+export const getPurchaseUsage = asyncErrorHandler(async (req, res, next) => {
+  const { customerId, inventoryId } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(customerId)) {
+    return next(new CustomError(400, "Invalid customer ID format"));
+  }
+  if (!mongoose.Types.ObjectId.isValid(inventoryId)) {
+    return next(new CustomError(400, "Invalid inventory ID format"));
+  }
+
+  const customer = await Customer.findById(customerId).select("name phone");
+  if (!customer) {
+    return next(new CustomError(404, "Customer not found"));
+  }
+
+  const inventory = await Inventory.findById(inventoryId).select(
+    "productName productCode ecommerceMaxPerUser ecommercePurchaseResetMode ecommercePurchaseResetDays"
+  );
+  if (!inventory) {
+    return next(new CustomError(404, "Inventory item not found"));
+  }
+  if (!inventory.ecommerceMaxPerUser) {
+    return next(new CustomError(400, "This product has no purchase limit"));
+  }
+
+  const latestReset = await PurchaseReset.findOne({ customerId: { $in: [customerId, null] }, inventoryId })
+    .sort({ resetAt: -1 })
+    .populate("resetBy", "name");
+
+  let cutoff;
+  if (inventory.ecommercePurchaseResetMode === "manual") {
+    cutoff = latestReset ? latestReset.resetAt : new Date(0);
+  } else {
+    const days = inventory.ecommercePurchaseResetDays || 30;
+    const windowStart = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    cutoff = latestReset
+      ? new Date(Math.max(latestReset.resetAt, windowStart))
+      : windowStart;
+  }
+
+  const existingOrders = await EcommerceOrder.find({
+    customerId,
+    createdAt: { $gte: cutoff },
+    isDeleted: false,
+    status: { $ne: "cancelled" },
+    "products.inventoryId": inventoryId,
+  });
+
+  const alreadyOrdered = existingOrders.reduce((sum, order) => {
+    const p = order.products.find(pr => pr.inventoryId.toString() === inventoryId);
+    return sum + (p ? p.quantity : 0);
+  }, 0);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      customer: { _id: customer._id, name: customer.name, phone: customer.phone },
+      product: {
+        _id: inventory._id,
+        productName: inventory.productName,
+        productCode: inventory.productCode,
+        maxPerUser: inventory.ecommerceMaxPerUser,
+        resetMode: inventory.ecommercePurchaseResetMode,
+        resetDays: inventory.ecommercePurchaseResetDays,
+      },
+      alreadyOrdered,
+      remaining: Math.max(0, inventory.ecommerceMaxPerUser - alreadyOrdered),
+      lastResetAt: latestReset?.resetAt || null,
+      lastResetBy: latestReset?.resetBy || null,
+    },
+  });
 });
