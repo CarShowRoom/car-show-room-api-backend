@@ -253,6 +253,7 @@ orderSchema.index({ storefrontId: 1, isDeleted: 1 }); // Compound index for comm
 orderSchema.index({ orderStatus: 1 }); // For status filtering
 orderSchema.index({ creditPersonId: 1 }); // For credit person queries
 orderSchema.index({ paymentType: 1 }); // For filtering by payment type
+orderSchema.index({ creditPersonId: 1, paymentType: 1, isDeleted: 1, orderStatus: 1 }); // For credit limit aggregation
 
 // Performance indexes for orderNumber queries (used in generateOrderNumber)
 orderSchema.index({ orderNumber: 1, isDeleted: 1 }); // For finding latest order by date prefix

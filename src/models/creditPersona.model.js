@@ -21,6 +21,11 @@ const creditPersonSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    creditLimit: {
+      type: Number,
+      default: null,
+      min: [0, "Credit limit cannot be negative"],
+    },
   },
   {
     timestamps: true,
@@ -29,6 +34,8 @@ const creditPersonSchema = new mongoose.Schema(
     toObject: { virtuals: true },
   }
 );
+
+creditPersonSchema.index({ name: 1, phone: 1 }, { unique: true });
 
 const CreditPerson = mongoose.model("CreditPerson", creditPersonSchema);
 

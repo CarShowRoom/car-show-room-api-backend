@@ -10,6 +10,40 @@ import CustomError from "../utils/customError.js";
 import { createDateFilter } from "../utils/dateFilter.utils.js";
 import { logActivity } from "../services/activityLog.service.js";
 
+const getTotalOutstanding = async (creditPersonId, session = null) => {
+  const match = {
+    creditPersonId: new mongoose.Types.ObjectId(creditPersonId),
+    paymentType: "credit",
+    isDeleted: false,
+    orderStatus: { $ne: "cancelled" },
+  };
+  const pipeline = [
+    { $match: match },
+    {
+      $group: {
+        _id: null,
+        totalOutstanding: { $sum: { $subtract: ["$finalAmount", "$paidAmount"] } },
+      },
+    },
+  ];
+  const opts = session ? { session } : {};
+  const [result] = await Order.aggregate(pipeline).session(opts.session || null);
+  return result ? result.totalOutstanding : 0;
+};
+
+const checkCreditLimit = async (creditPersonId, additionalAmount, session = null) => {
+  const person = await CreditPerson.findById(creditPersonId).session(session || null);
+  if (!person) throw new CustomError(404, "Credit person not found");
+  if (person.creditLimit == null) return;
+  const currentOutstanding = await getTotalOutstanding(creditPersonId, session);
+  const newTotal = currentOutstanding + additionalAmount;
+  if (newTotal > person.creditLimit) {
+    throw new CustomError(400,
+      `Credit limit exceeded. Current outstanding: ${currentOutstanding.toLocaleString()} MMK, Limit: ${person.creditLimit.toLocaleString()} MMK, Would need: ${newTotal.toLocaleString()} MMK`
+    );
+  }
+};
+
 // Create new order with ACID properties and stock deduction
 export const createOrder = asyncErrorHandler(async (req, res, next) => {
   const {
@@ -310,6 +344,14 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
 
           if (calculatedFinalAmount < 0) {
             throw new CustomError(400, "Final amount cannot be negative");
+          }
+
+          // Check credit limit (after finalAmount is known)
+          if (creditPerson?.creditLimit != null) {
+            const additionalAmount = calculatedFinalAmount - paidAmount;
+            if (additionalAmount > 0) {
+              await checkCreditLimit(creditPersonId, additionalAmount, session);
+            }
           }
 
           // 4. Validate stock availability and deduct stock (only for storefront sales)
@@ -710,6 +752,14 @@ export const updateOrderCreditPersonId = asyncErrorHandler(
           );
         }
 
+        // 4a. Check credit limit
+        if (creditPerson.creditLimit != null) {
+          const additionalAmount = order.finalAmount - order.paidAmount;
+          if (additionalAmount > 0) {
+            await checkCreditLimit(creditPersonId, additionalAmount, session);
+          }
+        }
+
         // 5. Update order with credit person ID
         order.creditPersonId = new mongoose.Types.ObjectId(creditPersonId);
         await order.save({ session });
@@ -801,6 +851,12 @@ export const updateOrderPaidAmount = asyncErrorHandler(
 
         if (order.isDeleted) {
           throw new CustomError(400, "Cannot update deleted order");
+        }
+
+        // 1a. Check credit limit if reducing paidAmount on a credit order
+        if (order.creditPersonId && order.paymentType === "credit" && paidAmount < (order.paidAmount || 0)) {
+          const reduction = (order.paidAmount || 0) - paidAmount;
+          await checkCreditLimit(order.creditPersonId, reduction, session);
         }
 
         // 2. Update order paid amount
@@ -1145,6 +1201,13 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
       }
 
       if (finalAmount !== undefined && finalAmount !== null) {
+        if (order.creditPersonId) {
+          const oldOutstanding = (order.finalAmount || 0) - (order.paidAmount || 0);
+          const newOutstanding = finalAmount - (order.paidAmount || 0);
+          if (newOutstanding > oldOutstanding) {
+            await checkCreditLimit(order.creditPersonId, newOutstanding - oldOutstanding, session);
+          }
+        }
         order.finalAmount = finalAmount;
       }
 
