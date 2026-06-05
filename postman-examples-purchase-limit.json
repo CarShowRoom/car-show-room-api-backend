@@ -1,0 +1,230 @@
+{
+  "info": {
+    "name": "i-max POS - Ecommerce Purchase Limit",
+    "description": "Postman collection for Ecommerce purchase limit feature — per-user, per-product, with timeline/manual reset modes",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "purchase-limit-api"
+  },
+  "item": [
+    {
+      "name": "Create Inventory (with purchase limit)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "productName", "value": "Royal D 20W-50 Engine Oil", "type": "text" },
+            { "key": "productCode", "value": "RD2050-LIMIT", "type": "text" },
+            { "key": "category", "value": "Engine Oil", "type": "text" },
+            { "key": "brand", "value": "Royal D", "type": "text" },
+            { "key": "buyingPrice", "value": "4000", "type": "text" },
+            { "key": "sellingPrice", "value": "5500", "type": "text" },
+            { "key": "unitOfMeasure", "value": "ဘူး", "type": "text" },
+            { "key": "ecommerceMaxPerUser", "value": "10", "type": "text" },
+            { "key": "ecommercePurchaseResetMode", "value": "timeline", "type": "text" },
+            { "key": "ecommercePurchaseResetDays", "value": "7", "type": "text" }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/inventory",
+          "host": ["{{base_url}}"],
+          "path": ["inventory"]
+        }
+      }
+    },
+    {
+      "name": "Update Inventory — Set Manual Limit",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ecommerceMaxPerUser\": 5,\n  \"ecommercePurchaseResetMode\": \"manual\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/inventory/INVENTORY_ID_HERE",
+          "host": ["{{base_url}}"],
+          "path": ["inventory", "INVENTORY_ID_HERE"],
+          "variable": [
+            { "key": "id", "value": "INVENTORY_ID_HERE" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Update Inventory — Set Timeline Limit (7 days)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ecommerceMaxPerUser\": 10,\n  \"ecommercePurchaseResetMode\": \"timeline\",\n  \"ecommercePurchaseResetDays\": 7\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/inventory/INVENTORY_ID_HERE",
+          "host": ["{{base_url}}"],
+          "path": ["inventory", "INVENTORY_ID_HERE"],
+          "variable": [
+            { "key": "id", "value": "INVENTORY_ID_HERE" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Update Inventory — Remove Limit",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ecommerceMaxPerUser\": null\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/inventory/INVENTORY_ID_HERE",
+          "host": ["{{base_url}}"],
+          "path": ["inventory", "INVENTORY_ID_HERE"],
+          "variable": [
+            { "key": "id", "value": "INVENTORY_ID_HERE" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Ecommerce Products (check limit fields)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/ecommerce/products?page=1&limit=10",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "products"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "10" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Create Order (within limit — should succeed)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{customer_jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"products\": [\n    {\n      \"inventoryId\": \"INVENTORY_ID_HERE\",\n      \"quantity\": 5\n    }\n  ]\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/order",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "order"]
+        }
+      }
+    },
+    {
+      "name": "Create Order (exceeds limit — should get 400 error)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{customer_jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"products\": [\n    {\n      \"inventoryId\": \"INVENTORY_ID_HERE\",\n      \"quantity\": 20\n    }\n  ]\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/order",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "order"]
+        }
+      }
+    },
+    {
+      "name": "Get Purchase Usage (Dashboard)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/ecommerce/admin/purchase-usage/CUSTOMER_ID_HERE/INVENTORY_ID_HERE",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "admin", "purchase-usage", "CUSTOMER_ID_HERE", "INVENTORY_ID_HERE"],
+          "variable": [
+            { "key": "customerId", "value": "CUSTOMER_ID_HERE" },
+            { "key": "inventoryId", "value": "INVENTORY_ID_HERE" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Admin Reset Purchase Limit",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"customerId\": \"CUSTOMER_ID_HERE\",\n  \"inventoryId\": \"INVENTORY_ID_HERE\"\n}",
+          "options": {
+            "raw": { "language": "json" }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/ecommerce/admin/reset-purchase-limit",
+          "host": ["{{base_url}}"],
+          "path": ["ecommerce", "admin", "reset-purchase-limit"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "your-admin-jwt-token-here",
+      "type": "string"
+    },
+    {
+      "key": "customer_jwt_token",
+      "value": "your-customer-jwt-token-here",
+      "type": "string"
+    }
+  ]
+}

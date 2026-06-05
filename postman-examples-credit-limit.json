@@ -1,0 +1,300 @@
+{
+  "info": {
+    "name": "i-max POS - Credit Limit & Payment Tracking",
+    "description": "Postman collection for Credit Person credit limit (per-person outstanding limit enforced on order/payment changes) + lastPaymentDate tracking on credit orders",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "credit-limit-api"
+  },
+  "item": [
+    {
+      "name": "Create Credit Person (with limit)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"U Kyaw Tun\",\n  \"phone\": \"09-123456789\",\n  \"creditLimit\": 500000\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/credit-persona",
+          "host": ["{{base_url}}"],
+          "path": ["credit-persona"]
+        }
+      }
+    },
+    {
+      "name": "Create Credit Person (unlimited)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Daw Hla Hla\",\n  \"phone\": \"09-987654321\",\n  \"creditLimit\": null\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/credit-persona",
+          "host": ["{{base_url}}"],
+          "path": ["credit-persona"]
+        }
+      }
+    },
+    {
+      "name": "Create Duplicate Credit Person (should FAIL 400)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"U Kyaw Tun\",\n  \"phone\": \"09-123456789\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/credit-persona",
+          "host": ["{{base_url}}"],
+          "path": ["credit-persona"]
+        }
+      }
+    },
+    {
+      "name": "Get All Credit Persons (shows creditLimit)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/credit-persona",
+          "host": ["{{base_url}}"],
+          "path": ["credit-persona"]
+        }
+      }
+    },
+    {
+      "name": "Get Credit Person By ID (shows remainingLimit)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/credit-persona/{{creditPersonId}}",
+          "host": ["{{base_url}}"],
+          "path": ["credit-persona", "{{creditPersonId}}"]
+        }
+      }
+    },
+    {
+      "name": "Update Credit Person (set/edit creditLimit)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"creditLimit\": 1000000\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/credit-persona/{{creditPersonId}}",
+          "host": ["{{base_url}}"],
+          "path": ["credit-persona", "{{creditPersonId}}"]
+        }
+      }
+    },
+    {
+      "name": "Create Order (credit, within limit — sets lastPaymentDate)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"saleType\": \"storefront\",\n  \"storefrontId\": \"{{storefrontId}}\",\n  \"customerName\": \"U Kyaw Tun\",\n  \"ordersProducts\": [\n    {\n      \"inventoryId\": \"{{inventoryId}}\",\n      \"quantity\": 10\n    }\n  ],\n  \"finalAmount\": 300000,\n  \"paidAmount\": 100000,\n  \"paymentType\": \"credit\",\n  \"paymentMethod\": \"cash\",\n  \"creditPersonId\": \"{{creditPersonId}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/order",
+          "host": ["{{base_url}}"],
+          "path": ["order"]
+        }
+      }
+    },
+    {
+      "name": "Create Order (credit, exceeds limit — should FAIL 400)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"saleType\": \"storefront\",\n  \"storefrontId\": \"{{storefrontId}}\",\n  \"customerName\": \"U Kyaw Tun\",\n  \"ordersProducts\": [\n    {\n      \"inventoryId\": \"{{inventoryId}}\",\n      \"quantity\": 10\n    }\n  ],\n  \"finalAmount\": 500000,\n  \"paidAmount\": 0,\n  \"paymentType\": \"credit\",\n  \"paymentMethod\": \"cash\",\n  \"creditPersonId\": \"{{creditPersonId}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/order",
+          "host": ["{{base_url}}"],
+          "path": ["order"]
+        }
+      }
+    },
+    {
+      "name": "Create Credit Payment (updates lastPaymentDate + frees limit)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"paidAmount\": 100000,\n  \"paymentMethod\": \"cash\",\n  \"notes\": \"Partial payment\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/credit-record",
+          "host": ["{{base_url}}"],
+          "path": ["credit-record"]
+        }
+      }
+    },
+    {
+      "name": "Get Credit Records by Order (shows lastPaymentDate)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/order/{{orderId}}/credit-records",
+          "host": ["{{base_url}}"],
+          "path": ["order", "{{orderId}}", "credit-records"]
+        }
+      }
+    },
+    {
+      "name": "Get Credit Records by Credit Person (shows lastPaymentDate per order)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/credit-persona/{{creditPersonId}}/credit-records",
+          "host": ["{{base_url}}"],
+          "path": ["credit-persona", "{{creditPersonId}}", "credit-records"]
+        }
+      }
+    },
+    {
+      "name": "Update Order — Attach Credit Person (with limit check)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"creditPersonId\": \"{{creditPersonId}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/order/{{orderId}}/credit-person",
+          "host": ["{{base_url}}"],
+          "path": ["order", "{{orderId}}", "credit-person"]
+        }
+      }
+    },
+    {
+      "name": "Update Order Paid Amount (reduce — checks limit, recalculates lastPaymentDate)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"paidAmount\": 0\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/order/{{orderId}}/paid-amount",
+          "host": ["{{base_url}}"],
+          "path": ["order", "{{orderId}}", "paid-amount"]
+        }
+      }
+    },
+    {
+      "name": "Add Order Items (increase finalAmount — checks limit, sets lastPaymentDate)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"items\": [\n    {\n      \"inventoryId\": \"{{inventoryId}}\",\n      \"quantity\": 5\n    }\n  ],\n  \"finalAmount\": 500000,\n  \"paidAmount\": 100000\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/order/{{orderId}}/items",
+          "host": ["{{base_url}}"],
+          "path": ["order", "{{orderId}}", "items"]
+        }
+      }
+    },
+    {
+      "name": "Hard Delete Credit Record (recalculates lastPaymentDate from remaining)",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/credit-record/{{creditRecordId}}",
+          "host": ["{{base_url}}"],
+          "path": ["credit-record", "{{creditRecordId}}"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000/api/v1"
+    },
+    {
+      "key": "jwt_token",
+      "value": "your-admin-jwt-token-here"
+    },
+    {
+      "key": "creditPersonId",
+      "value": "replace-with-credit-person-id"
+    },
+    {
+      "key": "creditRecordId",
+      "value": "replace-with-credit-record-id"
+    },
+    {
+      "key": "storefrontId",
+      "value": "replace-with-storefront-id"
+    },
+    {
+      "key": "inventoryId",
+      "value": "replace-with-inventory-id"
+    },
+    {
+      "key": "orderId",
+      "value": "replace-with-order-id"
+    }
+  ]
+}

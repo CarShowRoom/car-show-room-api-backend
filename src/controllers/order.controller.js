@@ -23,6 +23,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     paymentMethod = "cash",
     creditPersonId,
     orderDate,
+    note,
   } = req.body;
   const soldBy = req.user._id;
 
@@ -342,6 +343,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
             paymentMethod: paymentMethod || "cash",
             orderStatus: "completed",
             soldBy,
+            note: note || "",
           };
 
           if (orderDate) {

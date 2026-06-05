@@ -101,6 +101,12 @@ const orderSchema = new mongoose.Schema(
       type: String,
       default: "cash",
     },
+    note: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: [500, "Note cannot exceed 500 characters"],
+    },
   },
   {
     timestamps: true,
