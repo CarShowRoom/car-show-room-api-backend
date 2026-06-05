@@ -104,6 +104,14 @@ const orderSchema = new mongoose.Schema(
       default: 0,
       min: [0, "Extra change cannot be negative"],
     },
+    lastPaymentDate: {
+      type: Date,
+      default: null,
+    },
+    dueDate: {
+      type: Date,
+      default: null,
+    },
     orderStatus: {
       type: String,
       enum: {

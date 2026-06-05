@@ -4,6 +4,7 @@ import {
   getAllCreditPersons,
   getCreditPersonById,
   updateCreditPerson,
+  getCreditPersonOrderSummary,
 } from "../controllers/creditPersona.controller.js";
 import { protect } from "../controllers/administrationPolicy.controller.js";
 import { permissionGranted } from "../controllers/administrationPolicy.controller.js";
@@ -33,5 +34,11 @@ router.patch(
   protect,
   permissionGranted("owner"),
   updateCreditPerson
+);
+router.get(
+  "/credit-persona/:id/order-summary",
+  protect,
+  permissionGranted("owner", "admin", "cashier"),
+  getCreditPersonOrderSummary
 );
 export default router;

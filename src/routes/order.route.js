@@ -6,6 +6,7 @@ import {
   getAllOrders,
   updateOrderCreditPersonId,
   updateOrderPaidAmount,
+  updateOrderDueDate,
   addOrderItems,
   removeOrderItems,
   hardDeleteOrder,
@@ -55,6 +56,14 @@ router.patch(
   protect,
   permissionGranted("owner"),
   updateOrderPaidAmount
+);
+
+// Update order due date
+router.patch(
+  "/order/:orderId/due-date",
+  protect,
+  permissionGranted("owner", "admin", "cashier"),
+  updateOrderDueDate
 );
 
 // Add order items to existing order

@@ -82,16 +82,15 @@ export const createQuotation = asyncErrorHandler(async (req, res, next) => {
     }
 
     let factor = 1;
-    let unit = null;
+    let unit = product.unit || null;
     let baseQuantity = product.quantity;
 
-    if (product.unit && invItem.uomConversions?.length > 0) {
+    if (unit && invItem.uomConversions?.length > 0) {
       const conversion = invItem.uomConversions.find(
-        (c) => c.unit?.toLowerCase() === String(product.unit).toLowerCase(),
+        (c) => c.unit?.toLowerCase() === String(unit).toLowerCase(),
       );
       if (conversion) {
         factor = conversion.factor;
-        unit = conversion.unit;
         baseQuantity = product.quantity / factor;
       }
     }
@@ -213,6 +212,18 @@ export const getAllQuotations = asyncErrorHandler(async (req, res, next) => {
     Quotation.countDocuments(filter),
   ]);
 
+  // Ensure embedded product fields have defaults for old documents
+  const productDefaults = { unit: null, factor: 1, baseQuantity: null };
+  quotations.forEach((q) => {
+    if (q.products) {
+      q.products.forEach((p) => {
+        Object.keys(productDefaults).forEach((key) => {
+          if (p[key] === undefined) p[key] = productDefaults[key];
+        });
+      });
+    }
+  });
+
   // Compute totals for summary
   const summary = quotations.reduce(
     (acc, q) => {
@@ -257,6 +268,16 @@ export const getQuotationById = asyncErrorHandler(async (req, res, next) => {
 
   if (!quotation) {
     return next(new CustomError(404, "Quotation not found"));
+  }
+
+  // Ensure embedded product fields have defaults for old documents
+  const productDefaults = { unit: null, factor: 1, baseQuantity: null };
+  if (quotation.products) {
+    quotation.products.forEach((p) => {
+      Object.keys(productDefaults).forEach((key) => {
+        if (p[key] === undefined) p[key] = productDefaults[key];
+      });
+    });
   }
 
   res.status(200).json({
@@ -319,16 +340,15 @@ export const updateQuotation = asyncErrorHandler(async (req, res, next) => {
       }
 
       let factor = 1;
-      let unit = null;
+      let unit = product.unit || null;
       let baseQuantity = product.quantity;
 
-      if (product.unit && invItem.uomConversions?.length > 0) {
+      if (unit && invItem.uomConversions?.length > 0) {
         const conversion = invItem.uomConversions.find(
-          (c) => c.unit?.toLowerCase() === String(product.unit).toLowerCase(),
+          (c) => c.unit?.toLowerCase() === String(unit).toLowerCase(),
         );
         if (conversion) {
           factor = conversion.factor;
-          unit = conversion.unit;
           baseQuantity = product.quantity / factor;
         }
       }

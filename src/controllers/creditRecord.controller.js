@@ -105,6 +105,7 @@ export const createCreditPayment = asyncErrorHandler(async (req, res, next) => {
       // The order.paidAmount accumulates all credit payments made for this order
       const previousOrderPaidAmount = order.paidAmount || 0;
       order.paidAmount = previousOrderPaidAmount + paidAmount;
+      order.lastPaymentDate = new Date();
       await order.save({ session });
 
       // 7. Get the updated paidAmount from the order (already saved above)
@@ -209,7 +210,7 @@ export const getCreditRecordsByOrderId = asyncErrorHandler(
       isDeleted: false,
     })
       .sort({ paymentDate: -1 }) // Sort by newest payment first
-      .populate("orderId", "orderNumber finalAmount paymentType");
+      .populate("orderId", "orderNumber finalAmount paymentType lastPaymentDate dueDate");
 
     // Calculate total paid from credit records
     const totalCreditPayments = creditRecords.reduce(
@@ -254,6 +255,8 @@ export const getCreditRecordsByOrderId = asyncErrorHandler(
           initialPaidAmount,
           totalPaidAmount: totalPaid,
           remainingBalance,
+          lastPaymentDate: order.lastPaymentDate || null,
+          dueDate: order.dueDate || null,
         },
         creditRecords: {
           count: recordsWithBalance.length,
@@ -317,7 +320,7 @@ export const getAllCreditRecords = asyncErrorHandler(async (req, res, next) => {
 
   // Execute query with optional pagination
   let creditRecordsQuery = CreditRecord.find(query)
-    .populate("orderId", "orderNumber finalAmount paymentType")
+    .populate("orderId", "orderNumber finalAmount paymentType lastPaymentDate dueDate")
     .populate("creditPersonId", "name phone")
     .populate("addedBy", "name email")
     .sort({ paymentDate: -1 });
@@ -367,7 +370,7 @@ export const getCreditRecordById = asyncErrorHandler(async (req, res, next) => {
   const creditRecord = await CreditRecord.findOne({
     _id: id,
     isDeleted: false,
-  }).populate("orderId", "orderNumber finalAmount paymentType");
+  }).populate("orderId", "orderNumber finalAmount paymentType lastPaymentDate dueDate");
 
   if (!creditRecord) {
     return next(new CustomError(404, "Credit record not found"));
@@ -427,7 +430,7 @@ export const getCreditRecordsByCreditPersonId = asyncErrorHandler(
 
     // Find all orders for this credit person - for summary information
     const orders = await Order.find(orderQuery).select(
-      "_id orderNumber finalAmount paidAmount"
+      "_id orderNumber finalAmount paidAmount lastPaymentDate dueDate"
     );
 
     if (orders.length === 0) {
@@ -487,7 +490,7 @@ export const getCreditRecordsByCreditPersonId = asyncErrorHandler(
     const creditRecords = await CreditRecord.find(query)
       .populate({
         path: "orderId",
-        select: "orderNumber",
+        select: "orderNumber paidAmount finalAmount lastPaymentDate",
       })
       .populate("addedBy", "name role")
       .sort({ paymentDate: -1 })
@@ -556,10 +559,14 @@ export const getCreditRecordsByCreditPersonId = asyncErrorHandler(
           0,
           orderData.finalAmount - runningPaid
         );
-        // Only keep _id and orderNumber in orderId
+        // Only keep _id, orderNumber, lastPaymentDate in orderId
         recordObj.orderId = {
           _id: records[i].orderId._id,
           orderNumber: records[i].orderId.orderNumber,
+          finalAmount: records[i].orderId.finalAmount,
+          paidAmount: records[i].orderId.paidAmount,
+          lastPaymentDate: records[i].orderId.lastPaymentDate || null,
+          dueDate: records[i].orderId.dueDate || null,
         };
         // Format addedBy with name and role
         if (records[i].addedBy) {
@@ -596,6 +603,8 @@ export const getCreditRecordsByCreditPersonId = asyncErrorHandler(
         orders: orders.map((order) => ({
           _id: order._id,
           orderNumber: order.orderNumber,
+          lastPaymentDate: order.lastPaymentDate || null,
+          dueDate: order.dueDate || null,
         })),
         creditRecords: {
           count: creditRecordsWithBalance.length,
@@ -681,6 +690,13 @@ export const hardDeleteCreditRecord = asyncErrorHandler(
 
         // 7. Hard delete the credit record
         await CreditRecord.findByIdAndDelete(id).session(session);
+
+        // 7a. Recalculate lastPaymentDate from remaining credit records
+        const remainingRecord = await CreditRecord.findOne({ orderId: order._id, isDeleted: false })
+          .sort({ paymentDate: -1 })
+          .session(session);
+        order.lastPaymentDate = remainingRecord ? remainingRecord.paymentDate : null;
+        await order.save({ session });
 
         // 8. Construct response data
         const creditRecordResponse = creditRecord.toObject();

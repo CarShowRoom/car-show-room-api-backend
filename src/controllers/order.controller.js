@@ -62,6 +62,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     paymentMethod = "cash",
     creditPersonId,
     orderDate,
+    dueDate,
   } = req.body;
   const soldBy = req.user._id;
 
@@ -108,19 +109,10 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     );
   }
 
-  // Validate creditPersonId - only allowed when paymentType is "credit"
+  // Validate creditPersonId format if provided
   if (creditPersonId) {
     if (!mongoose.Types.ObjectId.isValid(creditPersonId)) {
       return next(new CustomError(400, "Invalid credit person ID format"));
-    }
-
-    if (paymentType !== "credit") {
-      return next(
-        new CustomError(
-          400,
-          "Credit person ID can only be provided when payment type is 'credit'",
-        ),
-      );
     }
   }
 
@@ -178,6 +170,14 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     }
     if (parsedDate > new Date()) {
       return next(new CustomError(400, "Order date cannot be in the future"));
+    }
+  }
+
+  // Validate dueDate if provided
+  if (dueDate) {
+    const parsed = new Date(dueDate);
+    if (isNaN(parsed.getTime())) {
+      return next(new CustomError(400, "Invalid due date format"));
     }
   }
 
@@ -421,9 +421,11 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
             paidAmount,
             paymentType: paymentType || "paid",
             paymentMethod: paymentMethod || "cash",
+            lastPaymentDate: (paymentType === "credit" && paidAmount > 0) ? new Date() : null,
+            dueDate: dueDate ? new Date(dueDate) : null,
             orderStatus: "completed",
-            customerName: customerName || null,
-            customerPhone: customerPhone || null,
+            customerName: customerName || (creditPerson ? creditPerson.name : null),
+            customerPhone: customerPhone || (creditPerson ? creditPerson.phone : null),
             note: note || null,
             soldBy,
           };
@@ -568,7 +570,7 @@ export const getAllOrders = asyncErrorHandler(async (req, res, next) => {
   };
 
   // Extract query parameters
-  const { saleType, paymentType, paymentMethod, page, limit, search } = req.query;
+  const { saleType, paymentType, paymentMethod, page, limit, search, dueDays, creditPersonId } = req.query;
 
   // Add saleType filter if provided
   if (saleType !== undefined && saleType !== "") {
@@ -582,6 +584,14 @@ export const getAllOrders = asyncErrorHandler(async (req, res, next) => {
       );
     }
     filter.saleType = saleType;
+  }
+
+  // Add creditPersonId filter if provided
+  if (creditPersonId !== undefined && creditPersonId !== "") {
+    if (!mongoose.Types.ObjectId.isValid(creditPersonId)) {
+      return next(new CustomError(400, "Invalid credit person ID format"));
+    }
+    filter.creditPersonId = new mongoose.Types.ObjectId(creditPersonId);
   }
 
   // Add paymentType filter if provided
@@ -636,6 +646,18 @@ export const getAllOrders = asyncErrorHandler(async (req, res, next) => {
       // No matching product found — return empty result
       filter._id = null;
     }
+  }
+
+  // Auto-filter: dueDate in the next N days (from today to today + dueDays)
+  if (dueDays !== undefined && dueDays !== "") {
+    const days = parseInt(dueDays);
+    if (isNaN(days) || days <= 0) {
+      return next(new CustomError(400, "dueDays must be a positive number"));
+    }
+    const now = new Date();
+    const end = new Date();
+    end.setDate(end.getDate() + days);
+    filter.dueDate = { $gte: now, $lte: end };
   }
 
   const pageNum = parseInt(page) || 1;
@@ -909,6 +931,55 @@ export const updateOrderPaidAmount = asyncErrorHandler(
     }
   },
 );
+
+export const updateOrderDueDate = asyncErrorHandler(async (req, res, next) => {
+  const { orderId } = req.params;
+  const { dueDate } = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    return next(new CustomError(400, "Invalid order ID format"));
+  }
+
+  if (dueDate !== null && dueDate !== undefined) {
+    const parsed = new Date(dueDate);
+    if (isNaN(parsed.getTime())) {
+      return next(new CustomError(400, "Invalid due date format"));
+    }
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const order = await Order.findById(orderId).session(session);
+      if (!order) throw new CustomError(404, "Order not found");
+      if (order.isDeleted) throw new CustomError(400, "Cannot update deleted order");
+
+      order.dueDate = dueDate ? new Date(dueDate) : null;
+      await order.save({ session });
+
+      await order.populate("storefrontId", "locationName locationCode");
+      await order.populate("ordersProducts.inventoryId", "productName productCode SKU");
+      await order.populate("creditPersonId", "name phone");
+      await order.populate("soldBy", "name role");
+
+      res.status(200).json({
+        success: true,
+        message: "Due date updated successfully",
+        data: order,
+      });
+    });
+  } catch (error) {
+    if (error instanceof CustomError) return next(error);
+    if (error.name === "ValidationError") {
+      const errors = Object.values(error.errors).map((val) => val.message);
+      return next(new CustomError(400, `Validation error: ${errors.join(". ")}`));
+    }
+    console.error("Update due date error:", error);
+    return next(new CustomError(500, `Failed to update due date: ${error.message}`));
+  } finally {
+    await session.endSession();
+  }
+});
 
 export const getOrdersByStorefrontId = asyncErrorHandler(
   async (req, res, next) => {
