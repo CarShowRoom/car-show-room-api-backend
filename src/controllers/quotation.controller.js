@@ -92,11 +92,11 @@ export const createQuotation = asyncErrorHandler(async (req, res, next) => {
       if (conversion) {
         factor = conversion.factor;
         unit = conversion.unit;
-        baseQuantity = product.quantity / factor;
+        baseQuantity = product.quantity * factor;
       }
     }
 
-    const unitPrice = invItem.sellingPrice / factor;
+    const unitPrice = invItem.sellingPrice * factor;
     const productSubTotal = product.quantity * unitPrice;
     calculatedSubTotal += productSubTotal;
 
@@ -329,11 +329,11 @@ export const updateQuotation = asyncErrorHandler(async (req, res, next) => {
         if (conversion) {
           factor = conversion.factor;
           unit = conversion.unit;
-          baseQuantity = product.quantity / factor;
+          baseQuantity = product.quantity * factor;
         }
       }
 
-      const unitPrice = invItem.sellingPrice / factor;
+      const unitPrice = invItem.sellingPrice * factor;
       validatedProducts.push({
         inventoryId: invId,
         productName: invItem.productName,

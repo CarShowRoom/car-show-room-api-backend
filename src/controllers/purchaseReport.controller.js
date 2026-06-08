@@ -69,7 +69,7 @@ export const getPurchaseReport = asyncErrorHandler(async (req, res, next) => {
             {
               $group: {
                 _id: null,
-                totalProductsOrdered: { $sum: "$products.purchaseQuantity" },
+                totalProductsOrdered: { $sum: { $ifNull: ["$products.baseQuantity", "$products.purchaseQuantity"] } },
                 totalReceived: { $sum: "$products.receivedQuantity" },
               },
             },
@@ -101,7 +101,8 @@ export const getPurchaseReport = asyncErrorHandler(async (req, res, next) => {
   const enrichedPurchases = purchases.map((po) => {
     const poObj = po.toObject({ virtuals: true });
     const totalRemainingQty = poObj.products.reduce((sum, p) => {
-      const remaining = Math.max(0, (p.purchaseQuantity || 0) - (p.receivedQuantity || 0));
+      const baseQty = p.baseQuantity || p.purchaseQuantity || 0;
+      const remaining = Math.max(0, baseQty - (p.receivedQuantity || 0));
       return sum + remaining;
     }, 0);
     return { ...poObj, totalRemainingQuantity: totalRemainingQty };
@@ -179,9 +180,9 @@ export const getPurchaseProductReport = asyncErrorHandler(async (req, res, next)
     {
       $group: {
         _id: "$products.inventoryId",
-        totalOrdered: { $sum: "$products.purchaseQuantity" },
+        totalOrdered: { $sum: { $ifNull: ["$products.baseQuantity", "$products.purchaseQuantity"] } },
         totalReceived: { $sum: "$products.receivedQuantity" },
-        totalAmount: { $sum: { $multiply: ["$products.purchaseQuantity", "$products.buyingPrice"] } },
+        totalAmount: { $sum: { $multiply: [{ $ifNull: ["$products.baseQuantity", "$products.purchaseQuantity"] }, "$products.buyingPrice"] } },
         poCount: { $addToSet: "$_id" },
       },
     },
@@ -300,7 +301,7 @@ export const getPurchaseSupplierReport = asyncErrorHandler(async (req, res, next
         _id: "$supplierId",
         totalPOs: { $addToSet: "$_id" },
         totalAmount: { $sum: "$totalAmount" },
-        totalOrdered: { $sum: "$products.purchaseQuantity" },
+        totalOrdered: { $sum: { $ifNull: ["$products.baseQuantity", "$products.purchaseQuantity"] } },
         totalReceived: { $sum: "$products.receivedQuantity" },
         lastPODate: { $max: "$createdAt" },
       },

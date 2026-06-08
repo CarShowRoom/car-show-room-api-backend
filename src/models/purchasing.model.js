@@ -30,7 +30,17 @@ const productSchema = new mongoose.Schema(
       default: 0,
       min: [0, "Received quantity cannot be negative"],
       // Tracks total received quantity from all GRNs
-      // remainingQuantity = purchaseQuantity - receivedQuantity
+      // remainingQuantity = baseQuantity - receivedQuantity (falls back to purchaseQuantity)
+    },
+    unit: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    baseQuantity: {
+      type: Number,
+      default: null,
+      min: [0, "Base quantity cannot be negative"],
     },
     productCode: {
       type: String,
@@ -53,11 +63,12 @@ const productSchema = new mongoose.Schema(
   }
 );
 
-// Virtual for remaining quantity (purchaseQuantity - receivedQuantity)
+// Virtual for remaining quantity (baseQuantity - receivedQuantity)
+// Falls back to purchaseQuantity for backward compatibility
 productSchema.virtual("remainingQuantity").get(function () {
-  const purchaseQty = this.purchaseQuantity || 0;
+  const baseQty = this.baseQuantity || this.purchaseQuantity || 0;
   const receivedQty = this.receivedQuantity || 0;
-  return Math.max(0, purchaseQty - receivedQty);
+  return Math.max(0, baseQty - receivedQty);
 });
 
 const PurchasingSchema = new mongoose.Schema(

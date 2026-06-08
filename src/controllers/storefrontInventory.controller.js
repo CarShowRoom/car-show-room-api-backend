@@ -370,7 +370,7 @@ export const getAllStorefrontInventory = asyncErrorHandler(
 
       const quantityByUnit = { [baseUnit]: baseQty };
       for (const conv of uomConversions) {
-        quantityByUnit[conv.unit] = baseQty * conv.factor;
+        quantityByUnit[conv.unit] = baseQty / conv.factor;
       }
       return { ...item, quantityByUnit };
     });
@@ -425,7 +425,7 @@ export const getStorefrontInventoryById = asyncErrorHandler(
     const baseQty = stock.quantity || 0;
     const quantityByUnit = { [baseUnit]: baseQty };
     for (const conv of uomConversions) {
-      quantityByUnit[conv.unit] = baseQty * conv.factor;
+      quantityByUnit[conv.unit] = baseQty / conv.factor;
     }
 
     res.status(200).json({
@@ -441,7 +441,7 @@ export const getStorefrontInventoryById = asyncErrorHandler(
 export const updateStorefrontInventoryQuantity = asyncErrorHandler(
   async (req, res, next) => {
     const { id } = req.params;
-    const { quantityChange, reason } = req.body;
+    const { quantityChange, reason, unit } = req.body;
 
     // Validate MongoDB ObjectId format
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -480,7 +480,7 @@ export const updateStorefrontInventoryQuantity = asyncErrorHandler(
       // Find the stock before the update to get the current quantity
       // Populate inventoryId to get product name for error messages
       const stockToUpdate = await StorefrontInventory.findById(id)
-        .populate("inventoryId", "productName productCode SKU")
+        .populate("inventoryId", "productName productCode SKU unitOfMeasure uomConversions")
         .populate("storefrontId", "locationName locationCode type")
         .session(session);
 
@@ -504,8 +504,40 @@ export const updateStorefrontInventoryQuantity = asyncErrorHandler(
         return next(new CustomError(400, "Location is not a storefront"));
       }
 
+      // UOM conversion: if unit is provided, convert quantityChange to base units
+      let baseQuantityChange = quantityChange;
+      let displayUnit = null;
+      if (unit) {
+        const inventoryItem = stockToUpdate.inventoryId;
+        if (unit.toLowerCase() === inventoryItem.unitOfMeasure?.toLowerCase()) {
+          // Base unit — no conversion needed
+          baseQuantityChange = quantityChange;
+          displayUnit = unit;
+        } else {
+          const conversion = inventoryItem.uomConversions?.find(
+            (c) => c.unit?.toLowerCase() === String(unit).toLowerCase(),
+          );
+          if (!conversion) {
+            const validUnits = [
+              inventoryItem.unitOfMeasure,
+              ...(inventoryItem.uomConversions?.map((c) => c.unit) || []),
+            ].filter(Boolean);
+            await session.abortTransaction();
+            session.endSession();
+            return next(
+              new CustomError(
+                400,
+                `Invalid unit '${unit}'. Valid units: ${validUnits.join(", ")}`,
+              ),
+            );
+          }
+          baseQuantityChange = quantityChange * conversion.factor;
+          displayUnit = unit;
+        }
+      }
+
       const beforeQuantity = stockToUpdate.quantity || 0;
-      const afterQuantity = beforeQuantity + quantityChange;
+      const afterQuantity = beforeQuantity + baseQuantityChange;
 
       // Validate that the new quantity won't be negative
       if (afterQuantity < 0) {
@@ -523,19 +555,19 @@ export const updateStorefrontInventoryQuantity = asyncErrorHandler(
       const updatedStock = await StorefrontInventory.findByIdAndUpdate(
         id,
         {
-          $inc: { quantity: quantityChange },
+          $inc: { quantity: baseQuantityChange },
           $set: { lastUpdated: new Date() },
         },
         { new: true, runValidators: true, session },
       )
         .populate(
           "inventoryId",
-          "productName productCode SKU category barcode status",
+          "productName productCode SKU category barcode status unitOfMeasure uomConversions",
         )
         .populate("storefrontId", "locationName locationCode");
 
       // Create audit log entry
-      const action = determineActionType(quantityChange, false);
+      const action = determineActionType(baseQuantityChange, false);
       await createStockAuditLog({
         inventoryId: stockToUpdate.inventoryId._id,
         adminId: adminId,
@@ -544,7 +576,7 @@ export const updateStorefrontInventoryQuantity = asyncErrorHandler(
         stockRecordId: id,
         beforeQuantity: beforeQuantity,
         afterQuantity: afterQuantity,
-        quantityChange: quantityChange,
+        quantityChange: baseQuantityChange,
         action: action,
         reason: reason || null,
         relatedTransactionId: null,
@@ -557,20 +589,28 @@ export const updateStorefrontInventoryQuantity = asyncErrorHandler(
       session.endSession();
 
       // Determine action type for response message
-      const actionType = quantityChange > 0 ? "add" : "remove";
+      const actionType = baseQuantityChange > 0 ? "add" : "remove";
+      const unitContext = displayUnit ? ` (${Math.abs(quantityChange)} ${displayUnit})` : "";
       const actionMessage =
-        quantityChange > 0
-          ? `increased by ${Math.abs(quantityChange)}`
-          : `decreased by ${Math.abs(quantityChange)}`;
+        baseQuantityChange > 0
+          ? `increased by ${Math.abs(baseQuantityChange)}${unitContext}`
+          : `decreased by ${Math.abs(baseQuantityChange)}${unitContext}`;
 
       logActivity({
         admin: adminId,
         action: "update_quantity",
         feature: "storefront_stock",
-        description: `Storefront stock ${actionMessage} (change: ${quantityChange})`,
+        description: `Storefront stock ${actionMessage}`,
         targetId: updatedStock._id,
         targetModel: "StorefrontInventory",
-        metadata: { inventoryId: updatedStock.inventoryId?._id, storefrontId: stockToUpdate.storefrontId?._id, quantityChange, newQuantity: updatedStock.quantity },
+        metadata: {
+          inventoryId: updatedStock.inventoryId?._id,
+          storefrontId: stockToUpdate.storefrontId?._id,
+          quantityChange: baseQuantityChange,
+          originalQuantity: unit ? quantityChange : null,
+          originalUnit: unit || null,
+          newQuantity: updatedStock.quantity,
+        },
         ip: req.ip,
       });
       res.status(200).json({
@@ -581,7 +621,11 @@ export const updateStorefrontInventoryQuantity = asyncErrorHandler(
           type: actionType,
           previousQuantity: beforeQuantity,
           newQuantity: updatedStock.quantity,
-          quantityChange: quantityChange,
+          quantityChange: baseQuantityChange,
+          ...(unit && {
+            originalQuantity: quantityChange,
+            originalUnit: unit,
+          }),
         },
       });
     } catch (error) {

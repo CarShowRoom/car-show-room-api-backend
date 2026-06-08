@@ -33,12 +33,42 @@ export const createPurchase = asyncErrorHandler(async (req, res, next) => {
         );
       }
 
+      // UOM conversion: if unit is provided, validate and compute baseQuantity
+      let unit = item.unit || null;
+      let baseQuantity = null;
+
+      if (unit) {
+        if (unit.toLowerCase() === inventoryItem.unitOfMeasure?.toLowerCase()) {
+          // Base unit — no conversion needed
+          baseQuantity = item.purchaseQuantity;
+        } else {
+          const conversion = inventoryItem.uomConversions?.find(
+            (c) => c.unit?.toLowerCase() === String(unit).toLowerCase(),
+          );
+          if (!conversion) {
+            const validUnits = [
+              inventoryItem.unitOfMeasure,
+              ...(inventoryItem.uomConversions?.map((c) => c.unit) || []),
+            ].filter(Boolean);
+            throw new CustomError(
+              400,
+              `Invalid unit '${unit}' for product '${inventoryItem.productCode}'. Valid units: ${validUnits.join(", ")}`,
+            );
+          }
+          baseQuantity = item.purchaseQuantity * conversion.factor;
+        }
+      } else {
+        baseQuantity = item.purchaseQuantity;
+      }
+
       return {
         inventoryId: inventoryItem._id,
         productName: inventoryItem.productName,
         productCode: inventoryItem.productCode,
         buyingPrice: inventoryItem.buyingPrice,
         purchaseQuantity: item.purchaseQuantity,
+        unit,
+        baseQuantity,
       };
     })
   );
@@ -172,7 +202,7 @@ export const getAllPurchases = asyncErrorHandler(async (req, res, next) => {
         const remainingQty =
           product.remainingQuantity !== undefined
             ? product.remainingQuantity
-            : (product.purchaseQuantity || 0) - (product.receivedQuantity || 0);
+            : (product.baseQuantity || product.purchaseQuantity || 0) - (product.receivedQuantity || 0);
         return total + Math.max(0, remainingQty); // Ensure non-negative
       },
       0

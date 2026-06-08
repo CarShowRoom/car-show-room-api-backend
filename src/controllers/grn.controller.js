@@ -217,19 +217,19 @@ export const createGRN = asyncErrorHandler(async (req, res, next) => {
     }
 
     // Validate that receivedQuantity doesn't exceed remaining purchaseQuantity
-    // purchaseQuantity = original order quantity (never modified)
+    // baseQuantity = converted to base unit (falls back to purchaseQuantity)
     // receivedQuantity = total received from all GRNs
-    // remainingQuantity = purchaseQuantity - receivedQuantity
-    const poPurchaseQuantity = poProduct.purchaseQuantity || 0;
+    // remainingQuantity = baseQuantity - receivedQuantity
+    const poPurchaseBaseQty = poProduct.baseQuantity || poProduct.purchaseQuantity || 0;
     const poReceivedQuantity = poProduct.receivedQuantity || 0;
-    const remainingQuantity = poPurchaseQuantity - poReceivedQuantity;
+    const remainingQuantity = poPurchaseBaseQty - poReceivedQuantity;
 
     // Validate that new receivedQuantity doesn't exceed remaining quantity
     if (receivedQuantity > remainingQuantity) {
       return next(
         new CustomError(
           400,
-          `Received quantity (${receivedQuantity}) for product '${poProduct.productCode}' (${poProduct.productName}) exceeds remaining purchase order quantity. Already received: ${poReceivedQuantity}, Remaining: ${remainingQuantity}, Total ordered: ${poPurchaseQuantity}.`
+          `Received quantity (${receivedQuantity}) for product '${poProduct.productCode}' (${poProduct.productName}) exceeds remaining purchase order quantity. Already received: ${poReceivedQuantity}, Remaining: ${remainingQuantity}, Total ordered: ${poProduct.purchaseQuantity}${poProduct.baseQuantity ? " (base: " + poProduct.baseQuantity + ")" : ""}.`
         )
       );
     }
@@ -317,11 +317,11 @@ export const createGRN = asyncErrorHandler(async (req, res, next) => {
   // Check ALL products in the PO to ensure their status is correct
   // This handles cases where multiple GRNs might affect different products
   for (const product of updatedPO.products) {
-    const purchaseQty = product.purchaseQuantity || 0;
+    const purchaseQty = product.baseQuantity || product.purchaseQuantity || 0;
     const receivedQty = product.receivedQuantity || 0;
     const currentStatus = product.productStatus;
 
-    // If purchaseQuantity equals receivedQuantity, status should be "seperated"
+    // If total base quantity equals receivedQuantity, status should be "seperated"
     if (purchaseQty === receivedQty && currentStatus !== "seperated") {
       await Purchasing.updateOne(
         {
@@ -335,7 +335,7 @@ export const createGRN = asyncErrorHandler(async (req, res, next) => {
         }
       );
     }
-    // If purchaseQuantity does NOT equal receivedQuantity, status should be "pending"
+    // If total base quantity does not equal receivedQuantity, status should be "pending"
     else if (purchaseQty !== receivedQty && currentStatus !== "pending") {
       await Purchasing.updateOne(
         {

@@ -278,11 +278,11 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
               if (conversion) {
                 factor = conversion.factor;
                 unit = conversion.unit;
-                baseQuantity = product.quantity / factor;
+                baseQuantity = product.quantity * factor;
               }
             }
 
-            const unitPrice = (isDirectSale && product.unitPrice != null) ? product.unitPrice : inventoryItem.sellingPrice / factor;
+            const unitPrice = (isDirectSale && product.unitPrice != null) ? product.unitPrice : inventoryItem.sellingPrice * factor;
             const productSubTotal = product.quantity * unitPrice;
             calculatedSubTotal += productSubTotal;
 
@@ -1063,7 +1063,7 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
           );
           if (conversion) {
             factor = conversion.factor;
-            baseQuantity = item.quantity / factor;
+            baseQuantity = item.quantity * factor;
           }
         }
 
@@ -1097,11 +1097,11 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
           if (conversion) {
             factor = conversion.factor;
             unit = conversion.unit;
-            baseQuantity = item.quantity / factor;
+            baseQuantity = item.quantity * factor;
           }
         }
 
-        const unitPrice = inventoryItem.sellingPrice / factor;
+        const unitPrice = inventoryItem.sellingPrice * factor;
 
         // Check if item already exists in order
         const existingItemIndex = order.ordersProducts.findIndex(
@@ -1355,7 +1355,7 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
 
         // Calculate base quantity to restore (use existing item's factor)
         const factor = existingItem.factor || 1;
-        const restoreBaseQty = quantity / factor;
+        const restoreBaseQty = quantity * factor;
 
         // Calculate new quantity (in selling unit)
         const newQuantity = existingItem.quantity - quantity;
