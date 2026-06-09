@@ -44,7 +44,7 @@ export const getSaleReportByStorefrontId = asyncErrorHandler(
       filter.storefrontId = new mongoose.Types.ObjectId(storefrontId);
     }
 
-    // Add saleType filter (default to "storefront" for backward compatibility)
+    // Add saleType filter if provided
     if (saleType !== undefined && saleType !== "") {
       const validSaleTypes = ["storefront", "direct-sale"];
       if (!validSaleTypes.includes(saleType)) {
@@ -56,8 +56,6 @@ export const getSaleReportByStorefrontId = asyncErrorHandler(
         );
       }
       filter.saleType = saleType;
-    } else {
-      filter.saleType = "storefront";
     }
 
     // Add date range filter using dateFilter utility
@@ -193,7 +191,7 @@ export const getPaymentMethodReportByStorefrontId = asyncErrorHandler(
       filter.storefrontId = new mongoose.Types.ObjectId(storefrontId);
     }
 
-    // Add saleType filter (default to "storefront" for backward compatibility)
+    // Add saleType filter if provided
     if (saleType !== undefined && saleType !== "") {
       const validSaleTypes = ["storefront", "direct-sale"];
       if (!validSaleTypes.includes(saleType)) {
@@ -205,8 +203,6 @@ export const getPaymentMethodReportByStorefrontId = asyncErrorHandler(
         );
       }
       filter.saleType = saleType;
-    } else {
-      filter.saleType = "storefront";
     }
 
     // Add date range filter using dateFilter utility
@@ -503,7 +499,7 @@ export const getPaymentMethodReportByStorefrontId = asyncErrorHandler(
 
 export const getCreditSaleReportByStorefrontId = asyncErrorHandler(
   async (req, res, next) => {
-    const { storefrontId } = req.query;
+    const { storefrontId, saleType } = req.query;
 
     let storefront = null;
 
@@ -532,6 +528,20 @@ export const getCreditSaleReportByStorefrontId = asyncErrorHandler(
       orderStatus: "completed", // Only include completed orders
       paymentType: "credit", // Only credit orders
     };
+
+    // Add saleType filter if provided
+    if (saleType !== undefined && saleType !== "") {
+      const validSaleTypes = ["storefront", "direct-sale"];
+      if (!validSaleTypes.includes(saleType)) {
+        return next(
+          new CustomError(
+            400,
+            `Invalid sale type. Allowed values: ${validSaleTypes.join(", ")}`,
+          ),
+        );
+      }
+      filter.saleType = saleType;
+    }
 
     // Add storefrontId filter only if provided
     if (storefrontId) {
@@ -738,7 +748,7 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
       filter.storefrontId = new mongoose.Types.ObjectId(storefrontId);
     }
 
-    // Add saleType filter (default to "storefront" for backward compatibility)
+    // Add saleType filter if provided
     if (saleType !== undefined && saleType !== "") {
       const validSaleTypes = ["storefront", "direct-sale"];
       if (!validSaleTypes.includes(saleType)) {
@@ -750,8 +760,6 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
         );
       }
       filter.saleType = saleType;
-    } else {
-      filter.saleType = "storefront";
     }
 
     // Add date range filter using dateFilter utility
