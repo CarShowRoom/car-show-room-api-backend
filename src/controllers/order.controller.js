@@ -63,6 +63,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     creditPersonId,
     orderDate,
     dueDate,
+    transportFee = 0,
   } = req.body;
   const soldBy = req.user._id;
 
@@ -340,7 +341,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
           const calculatedFinalAmount =
             finalAmount !== undefined && finalAmount !== null
               ? finalAmount
-              : finalSubTotal + tax - discount;
+              : finalSubTotal + tax - discount + (transportFee || 0);
 
           if (calculatedFinalAmount < 0) {
             throw new CustomError(400, "Final amount cannot be negative");
@@ -417,6 +418,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
             subTotal: finalSubTotal,
             tax,
             discount,
+            transportFee: transportFee || 0,
             finalAmount: calculatedFinalAmount,
             paidAmount,
             paymentType: paymentType || "paid",
@@ -981,6 +983,72 @@ export const updateOrderDueDate = asyncErrorHandler(async (req, res, next) => {
   }
 });
 
+export const updateOrderTransportFee = asyncErrorHandler(async (req, res, next) => {
+  const { orderId } = req.params;
+  const { transportFee, finalAmount, paidAmount } = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    return next(new CustomError(400, "Invalid order ID format"));
+  }
+
+  if (transportFee === undefined || transportFee === null || transportFee < 0) {
+    return next(new CustomError(400, "Valid transportFee is required (min 0)"));
+  }
+
+  if (paidAmount !== undefined && paidAmount !== null && paidAmount < 0) {
+    return next(new CustomError(400, "paidAmount cannot be negative"));
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const order = await Order.findById(orderId).session(session);
+      if (!order) throw new CustomError(404, "Order not found");
+      if (order.isDeleted) throw new CustomError(400, "Cannot update deleted order");
+
+      const oldTransportFee = order.transportFee || 0;
+      order.transportFee = transportFee;
+
+      if (finalAmount !== undefined && finalAmount !== null) {
+        order.finalAmount = finalAmount;
+      } else {
+        order.finalAmount = (order.finalAmount || 0) - oldTransportFee + transportFee;
+      }
+
+      if (order.finalAmount < 0) {
+        throw new CustomError(400, "Final amount cannot be negative");
+      }
+
+      if (paidAmount !== undefined && paidAmount !== null) {
+        order.paidAmount = paidAmount;
+      }
+
+      await order.save({ session });
+
+      await order.populate("storefrontId", "locationName locationCode");
+      await order.populate("ordersProducts.inventoryId", "productName productCode SKU");
+      await order.populate("creditPersonId", "name phone");
+      await order.populate("soldBy", "name role");
+
+      res.status(200).json({
+        success: true,
+        message: "Transport fee updated successfully",
+        data: order,
+      });
+    });
+  } catch (error) {
+    if (error instanceof CustomError) return next(error);
+    if (error.name === "ValidationError") {
+      const errors = Object.values(error.errors).map((val) => val.message);
+      return next(new CustomError(400, `Validation error: ${errors.join(". ")}`));
+    }
+    console.error("Update transport fee error:", error);
+    return next(new CustomError(500, `Failed to update transport fee: ${error.message}`));
+  } finally {
+    await session.endSession();
+  }
+});
+
 export const getOrdersByStorefrontId = asyncErrorHandler(
   async (req, res, next) => {
     const { storefrontId } = req.params;
@@ -1022,6 +1090,7 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
     finalAmount,
     extraChange,
     paidAmount,
+    transportFee,
   } = req.body;
 
   // Validate orderId
@@ -1271,6 +1340,10 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
         order.discount = discount;
       }
 
+      if (transportFee !== undefined && transportFee !== null) {
+        order.transportFee = transportFee;
+      }
+
       if (finalAmount !== undefined && finalAmount !== null) {
         if (order.creditPersonId) {
           const oldOutstanding = (order.finalAmount || 0) - (order.paidAmount || 0);
@@ -1357,6 +1430,7 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
     finalAmount,
     extraChange,
     paidAmount,
+    transportFee,
   } = req.body;
 
   // Validate orderId
@@ -1551,6 +1625,10 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
 
       if (discount !== undefined && discount !== null) {
         order.discount = discount;
+      }
+
+      if (transportFee !== undefined && transportFee !== null) {
+        order.transportFee = transportFee;
       }
 
       if (finalAmount !== undefined && finalAmount !== null) {

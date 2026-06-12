@@ -89,6 +89,11 @@ const orderSchema = new mongoose.Schema(
       default: 0,
       min: [0, "Discount cannot be negative"],
     },
+    transportFee: {
+      type: Number,
+      default: 0,
+      min: [0, "Transport fee cannot be negative"],
+    },
     finalAmount: {
       type: Number,
       required: [true, "Final amount is required"],

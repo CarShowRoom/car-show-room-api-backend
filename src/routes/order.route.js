@@ -7,6 +7,7 @@ import {
   updateOrderCreditPersonId,
   updateOrderPaidAmount,
   updateOrderDueDate,
+  updateOrderTransportFee,
   addOrderItems,
   removeOrderItems,
   hardDeleteOrder,
@@ -64,6 +65,14 @@ router.patch(
   protect,
   permissionGranted("owner", "admin", "cashier"),
   updateOrderDueDate
+);
+
+// Update order transport fee
+router.patch(
+  "/order/:orderId/transport-fee",
+  protect,
+  permissionGranted("owner", "admin", "cashier"),
+  updateOrderTransportFee
 );
 
 // Add order items to existing order
