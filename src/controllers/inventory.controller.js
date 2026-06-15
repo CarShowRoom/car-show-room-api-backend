@@ -438,6 +438,12 @@ export const updateInventory = asyncErrorHandler(async (req, res, next) => {
 });
 
 // Bulk import inventory from Excel file
+// Supports two formats:
+// 1. Single-row per product (legacy): uses uom_1_unit, uom_1_factor columns
+// 2. Multi-row per product (new): same productCode in multiple rows, hierarchical UOM
+//    - Last row = base unit (unitOfMeasure, buyingPrice, sellingPrice)
+//    - Previous rows = conversion units (factor relative to unit below)
+//    - Flat factor computed by multiplying from base up
 export const importInventoryFromExcel = asyncErrorHandler(
   async (req, res, next) => {
     if (!req.file) {
@@ -453,8 +459,26 @@ export const importInventoryFromExcel = asyncErrorHandler(
       return next(new CustomError(400, "Excel file is empty"));
     }
 
+    // Group rows by productCode
+    const grouped = {};
+    for (const row of rows) {
+      const code = (
+        row.productCode ||
+        row.product_code ||
+        row["Product Code"]
+      );
+      if (!code) continue;
+      const codeUpper = String(code).trim().toUpperCase();
+      if (!grouped[codeUpper]) grouped[codeUpper] = [];
+      grouped[codeUpper].push(row);
+    }
+
+    if (Object.keys(grouped).length === 0) {
+      return next(new CustomError(400, "No valid product codes found in Excel"));
+    }
+
     const results = {
-      total: rows.length,
+      total: Object.keys(grouped).length,
       success: 0,
       failed: 0,
       errors: [],
@@ -463,20 +487,28 @@ export const importInventoryFromExcel = asyncErrorHandler(
 
     const validStatuses = ["active", "inactive", "discontinued"];
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const rowNum = i + 2; // Excel row number (1-indexed + header)
+    for (const [codeUpper, productRows] of Object.entries(grouped)) {
+      const rowNum = rows.indexOf(productRows[0]) + 2; // First occurrence row
 
       try {
+        // Last row = base unit
+        const baseRow = productRows[productRows.length - 1];
+
         const productName =
-          row.productName || row.product_name || row["Product Name"];
+          baseRow.productName ||
+          baseRow.product_name ||
+          baseRow["Product Name"];
         const productCode =
-          row.productCode || row.product_code || row["Product Code"];
-        const category = row.category || row["Category"];
+          baseRow.productCode ||
+          baseRow.product_code ||
+          baseRow["Product Code"];
+        const category = baseRow.category || baseRow["Category"];
         const buyingPrice =
-          row.buyingPrice || row.buying_price || row["Buying Price"];
+          baseRow.buyingPrice || baseRow.buying_price || baseRow["Buying Price"];
         const sellingPrice =
-          row.sellingPrice || row.selling_price || row["Selling Price"];
+          baseRow.sellingPrice ||
+          baseRow.selling_price ||
+          baseRow["Selling Price"];
 
         if (!productName) {
           throw new Error("Product name is required");
@@ -516,13 +548,13 @@ export const importInventoryFromExcel = asyncErrorHandler(
         }
 
         const existingProduct = await Inventory.findOne({
-          productCode: String(productCode).toUpperCase(),
+          productCode: codeUpper,
         });
         if (existingProduct) {
-          throw new Error(`Product code '${productCode}' already exists`);
+          throw new Error(`Product code '${codeUpper}' already exists`);
         }
 
-        const SKU = row.SKU || row.sku;
+        const SKU = baseRow.SKU || baseRow.sku;
         if (SKU) {
           const existingSKU = await Inventory.findOne({
             SKU: String(SKU).toUpperCase(),
@@ -532,7 +564,7 @@ export const importInventoryFromExcel = asyncErrorHandler(
           }
         }
 
-        const barcode = row.barcode || row["Barcode"];
+        const barcode = baseRow.barcode || baseRow["Barcode"];
         if (barcode) {
           const existingBarcode = await Inventory.findOne({
             barcode: String(barcode),
@@ -542,7 +574,8 @@ export const importInventoryFromExcel = asyncErrorHandler(
           }
         }
 
-        const saleCode = row.saleCode || row.sale_code || row["Sale Code"];
+        const saleCode =
+          baseRow.saleCode || baseRow.sale_code || baseRow["Sale Code"];
         if (saleCode) {
           const existingSaleCode = await Inventory.findOne({
             saleCode: String(saleCode).toUpperCase(),
@@ -553,17 +586,18 @@ export const importInventoryFromExcel = asyncErrorHandler(
         }
 
         const unitOfMeasure =
-          row.unitOfMeasure ||
-          row.unit_of_measure ||
-          row["Unit of Measure"] ||
+          baseRow.unitOfMeasure ||
+          baseRow.unit_of_measure ||
+          baseRow["Unit of Measure"] ||
           "piece";
 
-        const status = row.status || row["Status"] || "active";
+        const status = baseRow.status || baseRow["Status"] || "active";
         if (!validStatuses.includes(String(status).toLowerCase())) {
           throw new Error(`Invalid status: '${status}'`);
         }
 
-        const taxRate = row.taxRate || row.tax_rate || row["Tax Rate"] || 0;
+        const taxRate =
+          baseRow.taxRate || baseRow.tax_rate || baseRow["Tax Rate"] || 0;
         const numTaxRate = Number(taxRate);
         if (isNaN(numTaxRate) || numTaxRate < 0 || numTaxRate > 100) {
           throw new Error("Tax rate must be between 0 and 100");
@@ -571,7 +605,7 @@ export const importInventoryFromExcel = asyncErrorHandler(
 
         const inventoryData = {
           productName: String(productName).trim(),
-          productCode: String(productCode).trim().toUpperCase(),
+          productCode: codeUpper,
           saleCode: saleCode
             ? String(saleCode).trim().toUpperCase()
             : undefined,
@@ -579,43 +613,55 @@ export const importInventoryFromExcel = asyncErrorHandler(
           barcode: barcode ? String(barcode).trim() : undefined,
           category: String(category).trim(),
           subCategory:
-            row.subCategory ||
-            row.sub_category ||
-            row["Sub Category"] ||
+            baseRow.subCategory ||
+            baseRow.sub_category ||
+            baseRow["Sub Category"] ||
             "Unknown",
-          brand: row.brand || row["Brand"] || "Unknown",
+          brand: baseRow.brand || baseRow["Brand"] || "Unknown",
           description:
-            row.description || row["Description"] || "No description available",
+            baseRow.description ||
+            baseRow["Description"] ||
+            "No description available",
           buyingPrice: numBuyingPrice,
           sellingPrice: numSellingPrice,
           unitOfMeasure: String(unitOfMeasure).toLowerCase(),
           reorderPoint: Number(
-            row.reorderPoint || row.reorder_point || row["Reorder Point"] || 0,
+            baseRow.reorderPoint ||
+              baseRow.reorder_point ||
+              baseRow["Reorder Point"] ||
+              0,
           ),
           reorderQuantity: Number(
-            row.reorderQuantity ||
-              row.reorder_quantity ||
-              row["Reorder Quantity"] ||
+            baseRow.reorderQuantity ||
+              baseRow.reorder_quantity ||
+              baseRow["Reorder Quantity"] ||
               0,
           ),
           taxRate: numTaxRate,
           status: String(status).toLowerCase(),
-          tags: row.tags
-            ? String(row.tags)
+          tags: baseRow.tags
+            ? String(baseRow.tags)
                 .split(",")
                 .map((t) => t.trim())
                 .filter(Boolean)
             : [],
-          note: row.note || row["Note"] || "",
+          note: baseRow.note || baseRow["Note"] || "",
         };
 
         // Parse wholesale prices from prefix-based columns (wp_1 ~ wp_10)
         const wholesalePrices = [];
         for (let t = 1; t <= 10; t++) {
-          const unit = row[`wp_${t}_unit`] || null;
-          const qty = row[`wp_${t}_qty`];
-          const price = row[`wp_${t}_price`];
-          if (qty !== undefined && qty !== null && qty !== "" && price !== undefined && price !== null && price !== "") {
+          const unit = baseRow[`wp_${t}_unit`] || null;
+          const qty = baseRow[`wp_${t}_qty`];
+          const price = baseRow[`wp_${t}_price`];
+          if (
+            qty !== undefined &&
+            qty !== null &&
+            qty !== "" &&
+            price !== undefined &&
+            price !== null &&
+            price !== ""
+          ) {
             const entry = { quantity: Number(qty), price: Number(price) };
             if (unit) entry.unit = String(unit).trim();
             wholesalePrices.push(entry);
@@ -625,20 +671,68 @@ export const importInventoryFromExcel = asyncErrorHandler(
           inventoryData.wholesalePrices = wholesalePrices;
         }
 
-        // Parse UOM conversions from prefix-based columns (uom_1 ~ uom_5)
-        const uomConversions = [];
-        for (let t = 1; t <= 5; t++) {
-          const unit = row[`uom_${t}_unit`];
-          const factor = row[`uom_${t}_factor`];
-          if (unit && factor !== undefined && factor !== null && factor !== "") {
-            const entry = { unit: String(unit).trim(), factor: Number(factor) };
-            const def = row[`uom_${t}_default`];
-            if (def) entry.isDefaultSellingUnit = String(def).toLowerCase() === "true";
-            uomConversions.push(entry);
+        // Build UOM conversions
+        // Case 1: Multi-row format (2+ rows for same productCode)
+        //   - Last row = base unit
+        //   - Previous rows = conversion units with hierarchical factors
+        //   - Flat factor = multiply all factors from that row down to base
+        // Case 2: Single-row format (1 row)
+        //   - Legacy: use uom_1_unit, uom_1_factor columns
+        if (productRows.length > 1) {
+          // Multi-row hierarchical format
+          const uomConversions = [];
+          let flatFactor = 1;
+
+          // Read from second-to-last row up to first row (bottom-up)
+          for (let i = productRows.length - 2; i >= 0; i--) {
+            const row = productRows[i];
+            const unit =
+              row.unitOfMeasure || row.unit_of_measure || row["Unit of Measure"];
+            const factor = Number(
+              row.factor || row["Factor"] || row.conversion_factor,
+            );
+
+            if (unit && !isNaN(factor) && factor > 0) {
+              flatFactor *= factor;
+              uomConversions.push({
+                unit: String(unit).trim(),
+                factor: flatFactor,
+              });
+            }
           }
-        }
-        if (uomConversions.length > 0) {
-          inventoryData.uomConversions = uomConversions;
+
+          // Reverse so smallest unit comes first
+          uomConversions.reverse();
+
+          if (uomConversions.length > 0) {
+            inventoryData.uomConversions = uomConversions;
+          }
+        } else {
+          // Single-row legacy format: parse uom_1 ~ uom_5 columns
+          const uomConversions = [];
+          for (let t = 1; t <= 5; t++) {
+            const unit = baseRow[`uom_${t}_unit`];
+            const factor = baseRow[`uom_${t}_factor`];
+            if (
+              unit &&
+              factor !== undefined &&
+              factor !== null &&
+              factor !== ""
+            ) {
+              const entry = {
+                unit: String(unit).trim(),
+                factor: Number(factor),
+              };
+              const def = baseRow[`uom_${t}_default`];
+              if (def)
+                entry.isDefaultSellingUnit =
+                  String(def).toLowerCase() === "true";
+              uomConversions.push(entry);
+            }
+          }
+          if (uomConversions.length > 0) {
+            inventoryData.uomConversions = uomConversions;
+          }
         }
 
         const newItem = await Inventory.create(inventoryData);
@@ -648,11 +742,14 @@ export const importInventoryFromExcel = asyncErrorHandler(
           id: newItem._id,
           productCode: newItem.productCode,
           productName: newItem.productName,
+          unitOfMeasure: newItem.unitOfMeasure,
+          uomConversions: newItem.uomConversions,
         });
       } catch (error) {
         results.failed++;
         results.errors.push({
           row: rowNum,
+          productCode: codeUpper,
           message: error.message,
         });
       }
@@ -667,6 +764,9 @@ export const importInventoryFromExcel = asyncErrorHandler(
 );
 
 // Bulk update inventory from Excel (by productCode)
+// Supports same multi-row format as import:
+// - Multi-row: last row = base unit, previous rows = UOM conversions
+// - Single-row: legacy format with uom_1_unit, uom_1_factor columns
 export const importUpdateInventoryFromExcel = asyncErrorHandler(
   async (req, res, next) => {
     if (!req.file) {
@@ -682,60 +782,107 @@ export const importUpdateInventoryFromExcel = asyncErrorHandler(
       return next(new CustomError(400, "Excel file is empty"));
     }
 
+    // Group rows by productCode
+    const grouped = {};
+    for (const row of rows) {
+      const code =
+        row.productCode || row.product_code || row["Product Code"];
+      if (!code) continue;
+      const codeUpper = String(code).trim().toUpperCase();
+      if (!grouped[codeUpper]) grouped[codeUpper] = [];
+      grouped[codeUpper].push(row);
+    }
+
+    if (Object.keys(grouped).length === 0) {
+      return next(new CustomError(400, "No valid product codes found in Excel"));
+    }
+
     const results = {
-      total: rows.length,
+      total: Object.keys(grouped).length,
       success: 0,
       failed: 0,
       errors: [],
       updated: [],
     };
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const rowNum = i + 2;
+    for (const [codeUpper, productRows] of Object.entries(grouped)) {
+      const rowNum = rows.indexOf(productRows[0]) + 2;
 
       try {
-        const productCode = row.productCode || row.product_code || row["Product Code"];
-        if (!productCode) {
-          throw new Error("productCode is required");
-        }
-
         const existingItem = await Inventory.findOne({
-          productCode: String(productCode).trim().toUpperCase(),
+          productCode: codeUpper,
         });
         if (!existingItem) {
-          throw new Error(`Product code '${productCode}' not found`);
+          throw new Error(`Product code '${codeUpper}' not found`);
         }
 
-        // Optional simple fields — only update if provided
-        const simpleFields = ["brand", "category", "subCategory", "description", "status", "note"];
+        // Last row = base unit
+        const baseRow = productRows[productRows.length - 1];
+
+        // Update simple fields — only update if provided
+        const simpleFields = [
+          "brand",
+          "category",
+          "subCategory",
+          "description",
+          "status",
+          "note",
+        ];
         for (const field of simpleFields) {
-          const val = row[field] || row[field.replace(/([A-Z])/g, "_$1").toLowerCase()] || row[field.replace(/([a-z])([A-Z])/g, "$1 $2")];
+          const val =
+            baseRow[field] ||
+            baseRow[field.replace(/([A-Z])/g, "_$1").toLowerCase()] ||
+            baseRow[field.replace(/([a-z])([A-Z])/g, "$1 $2")];
           if (val) existingItem[field] = String(val).trim();
         }
 
-        if (row.buyingPrice !== undefined && row.buyingPrice !== null && row.buyingPrice !== "") {
-          existingItem.buyingPrice = Number(row.buyingPrice);
+        if (
+          baseRow.buyingPrice !== undefined &&
+          baseRow.buyingPrice !== null &&
+          baseRow.buyingPrice !== ""
+        ) {
+          existingItem.buyingPrice = Number(baseRow.buyingPrice);
         }
-        if (row.sellingPrice !== undefined && row.sellingPrice !== null && row.sellingPrice !== "") {
-          existingItem.sellingPrice = Number(row.sellingPrice);
+        if (
+          baseRow.sellingPrice !== undefined &&
+          baseRow.sellingPrice !== null &&
+          baseRow.sellingPrice !== ""
+        ) {
+          existingItem.sellingPrice = Number(baseRow.sellingPrice);
         }
-        if (row.unitOfMeasure || row.unit_of_measure || row["Unit of Measure"]) {
-          existingItem.unitOfMeasure = String(row.unitOfMeasure || row.unit_of_measure || row["Unit of Measure"]).trim();
+        if (
+          baseRow.unitOfMeasure ||
+          baseRow.unit_of_measure ||
+          baseRow["Unit of Measure"]
+        ) {
+          existingItem.unitOfMeasure = String(
+            baseRow.unitOfMeasure ||
+              baseRow.unit_of_measure ||
+              baseRow["Unit of Measure"],
+          ).trim();
         }
 
         // Validate sellingPrice >= buyingPrice
         if (existingItem.sellingPrice < existingItem.buyingPrice) {
-          throw new Error(`Selling price (${existingItem.sellingPrice}) must be >= buying price (${existingItem.buyingPrice})`);
+          throw new Error(
+            `Selling price (${existingItem.sellingPrice}) must be >= buying price (${existingItem.buyingPrice})`,
+          );
         }
 
-        // Parse wholesale prices (same logic as import)
+        // Parse wholesale prices from prefix-based columns (wp_1 ~ wp_10)
         const wholesalePrices = [];
         for (let t = 1; t <= 10; t++) {
-          const unit = row[`wp_${t}_unit`] || null;
-          const qty = row[`wp_${t}_qty`];
-          const price = row[`wp_${t}_price`];
-          if (qty !== undefined && qty !== null && qty !== "" && price !== undefined && price !== null && price !== "") {
+          const unit = baseRow[`wp_${t}_unit`] || null;
+          const qty = baseRow[`wp_${t}_qty`];
+          const price = baseRow[`wp_${t}_price`];
+          if (
+            qty !== undefined &&
+            qty !== null &&
+            qty !== "" &&
+            price !== undefined &&
+            price !== null &&
+            price !== ""
+          ) {
             const entry = { quantity: Number(qty), price: Number(price) };
             if (unit) entry.unit = String(unit).trim();
             wholesalePrices.push(entry);
@@ -745,20 +892,62 @@ export const importUpdateInventoryFromExcel = asyncErrorHandler(
           existingItem.wholesalePrices = wholesalePrices;
         }
 
-        // Parse UOM conversions (same logic as import)
-        const uomConversions = [];
-        for (let t = 1; t <= 5; t++) {
-          const unit = row[`uom_${t}_unit`];
-          const factor = row[`uom_${t}_factor`];
-          if (unit && factor !== undefined && factor !== null && factor !== "") {
-            const entry = { unit: String(unit).trim(), factor: Number(factor) };
-            const def = row[`uom_${t}_default`];
-            if (def) entry.isDefaultSellingUnit = String(def).toLowerCase() === "true";
-            uomConversions.push(entry);
+        // Build UOM conversions (same logic as import)
+        if (productRows.length > 1) {
+          // Multi-row hierarchical format
+          const uomConversions = [];
+          let flatFactor = 1;
+
+          for (let i = productRows.length - 2; i >= 0; i--) {
+            const row = productRows[i];
+            const unit =
+              row.unitOfMeasure ||
+              row.unit_of_measure ||
+              row["Unit of Measure"];
+            const factor = Number(
+              row.factor || row["Factor"] || row.conversion_factor,
+            );
+
+            if (unit && !isNaN(factor) && factor > 0) {
+              flatFactor *= factor;
+              uomConversions.push({
+                unit: String(unit).trim(),
+                factor: flatFactor,
+              });
+            }
           }
-        }
-        if (uomConversions.length > 0) {
-          existingItem.uomConversions = uomConversions;
+
+          uomConversions.reverse();
+
+          if (uomConversions.length > 0) {
+            existingItem.uomConversions = uomConversions;
+          }
+        } else {
+          // Single-row legacy format: parse uom_1 ~ uom_5 columns
+          const uomConversions = [];
+          for (let t = 1; t <= 5; t++) {
+            const unit = baseRow[`uom_${t}_unit`];
+            const factor = baseRow[`uom_${t}_factor`];
+            if (
+              unit &&
+              factor !== undefined &&
+              factor !== null &&
+              factor !== ""
+            ) {
+              const entry = {
+                unit: String(unit).trim(),
+                factor: Number(factor),
+              };
+              const def = baseRow[`uom_${t}_default`];
+              if (def)
+                entry.isDefaultSellingUnit =
+                  String(def).toLowerCase() === "true";
+              uomConversions.push(entry);
+            }
+          }
+          if (uomConversions.length > 0) {
+            existingItem.uomConversions = uomConversions;
+          }
         }
 
         await existingItem.save();
@@ -768,7 +957,7 @@ export const importUpdateInventoryFromExcel = asyncErrorHandler(
         results.failed++;
         results.errors.push({
           row: rowNum,
-          productCode: row.productCode || "",
+          productCode: codeUpper,
           message: error.message,
         });
       }
