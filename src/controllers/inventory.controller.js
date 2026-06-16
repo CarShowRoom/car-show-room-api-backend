@@ -389,26 +389,6 @@ export const updateInventory = asyncErrorHandler(async (req, res, next) => {
     }
   }
 
-  // Validate sellingPrice >= buyingPrice
-  // Merge updateData with existing data to get the final values
-  const finalBuyingPrice =
-    updateData.buyingPrice !== undefined
-      ? updateData.buyingPrice
-      : existingInventory.buyingPrice;
-  const finalSellingPrice =
-    updateData.sellingPrice !== undefined
-      ? updateData.sellingPrice
-      : existingInventory.sellingPrice;
-
-  if (finalSellingPrice < finalBuyingPrice) {
-    return next(
-      new CustomError(
-        400,
-        `Selling price (${finalSellingPrice}) should be greater than or equal to buying price (${finalBuyingPrice})`,
-      ),
-    );
-  }
-
   // Apply updates to the existing document and save
   // This ensures validators have access to the complete merged document
   Object.keys(updateData).forEach((key) => {
@@ -504,10 +484,12 @@ export const importInventoryFromExcel = asyncErrorHandler(
           baseRow["Product Code"];
         const category = baseRow.category || baseRow["Category"];
         const buyingPrice =
-          baseRow.buyingPrice || baseRow.buying_price || baseRow["Buying Price"];
+          baseRow.buyingPrice !== undefined ? baseRow.buyingPrice :
+          baseRow.buying_price !== undefined ? baseRow.buying_price :
+          baseRow["Buying Price"];
         const sellingPrice =
-          baseRow.sellingPrice ||
-          baseRow.selling_price ||
+          baseRow.sellingPrice !== undefined ? baseRow.sellingPrice :
+          baseRow.selling_price !== undefined ? baseRow.selling_price :
           baseRow["Selling Price"];
 
         if (!productName) {
@@ -542,9 +524,6 @@ export const importInventoryFromExcel = asyncErrorHandler(
         }
         if (isNaN(numSellingPrice) || numSellingPrice < 0) {
           throw new Error("Selling price must be a valid non-negative number");
-        }
-        if (numSellingPrice < numBuyingPrice) {
-          throw new Error("Selling price must be >= buying price");
         }
 
         const existingProduct = await Inventory.findOne({
@@ -860,13 +839,6 @@ export const importUpdateInventoryFromExcel = asyncErrorHandler(
               baseRow.unit_of_measure ||
               baseRow["Unit of Measure"],
           ).trim();
-        }
-
-        // Validate sellingPrice >= buyingPrice
-        if (existingItem.sellingPrice < existingItem.buyingPrice) {
-          throw new Error(
-            `Selling price (${existingItem.sellingPrice}) must be >= buying price (${existingItem.buyingPrice})`,
-          );
         }
 
         // Parse wholesale prices from prefix-based columns (wp_1 ~ wp_10)
