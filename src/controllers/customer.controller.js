@@ -2,6 +2,7 @@ import Customer from "../models/customer.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import { signToken } from "../services/jwtToken.service.js";
+import { TIER_KEYS } from "../constants/customerTiers.js";
 
 export const register = asyncErrorHandler(async (req, res, next) => {
   const { name, phone, password } = req.body;
@@ -77,12 +78,15 @@ export const getMe = asyncErrorHandler(async (req, res, next) => {
 });
 
 export const getAllCustomers = asyncErrorHandler(async (req, res, next) => {
-  const { page, limit, search } = req.query;
+  const { page, limit, search, tier } = req.query;
   const pageNum = parseInt(page) || 1;
   const limitNum = parseInt(limit) || 20;
   const skip = (pageNum - 1) * limitNum;
 
   const filter = {};
+  if (tier && TIER_KEYS.includes(tier)) {
+    filter.tier = tier;
+  }
   if (search && search.trim()) {
     const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     filter.$or = [
@@ -145,11 +149,18 @@ export const updateMe = asyncErrorHandler(async (req, res, next) => {
 
 export const updateCustomerByAdmin = asyncErrorHandler(async (req, res, next) => {
   const { id } = req.params;
-  const { name, phone, password, isActive, addresses } = req.body;
+  const { name, phone, password, isActive, addresses, tier } = req.body;
 
   const customer = await Customer.findById(id);
   if (!customer) {
     return next(new CustomError(404, "Customer not found"));
+  }
+
+  if (tier !== undefined) {
+    if (!TIER_KEYS.includes(tier)) {
+      return next(new CustomError(400, `Invalid tier. Must be one of: ${TIER_KEYS.join(", ")}`));
+    }
+    customer.tier = tier;
   }
 
   if (name !== undefined) customer.name = name;

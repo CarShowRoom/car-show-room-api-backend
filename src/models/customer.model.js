@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
+import { TIER_KEYS } from "../constants/customerTiers.js";
 
 const addressSchema = new mongoose.Schema({
   label: { type: String, trim: true },
@@ -30,6 +31,14 @@ const customerSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true,
+  },
+  tier: {
+    type: String,
+    enum: {
+      values: TIER_KEYS,
+      message: "Tier must be one of: " + TIER_KEYS.join(", "),
+    },
+    default: "standard",
   },
 }, { timestamps: true });
 

@@ -8,6 +8,7 @@ import PurchaseReset from "../models/purchaseReset.model.js";
 import { asyncErrorHandler } from "../utils/asyncErrorHandler.js";
 import CustomError from "../utils/customError.js";
 import { logActivity } from "../services/activityLog.service.js";
+import { getTierMultiplier } from "../services/customerTier.service.js";
 
 const ecommerceStorefrontId = process.env.ECOMMERCE_STOREFRONT_ID;
 
@@ -397,15 +398,17 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     }
 
     if (inventory.ecommerceMaxPerUser) {
+      const tierMultiplier = getTierMultiplier(req.customer.tier);
+      const effectiveLimit = inventory.ecommerceMaxPerUser * tierMultiplier;
       const alreadyOrdered = orderedMap[invId] || 0;
       const totalBaseQty = alreadyOrdered + baseQty;
-      if (totalBaseQty > inventory.ecommerceMaxPerUser) {
-        const remaining = Math.max(0, inventory.ecommerceMaxPerUser - alreadyOrdered);
+      if (totalBaseQty > effectiveLimit) {
+        const remaining = Math.max(0, effectiveLimit - alreadyOrdered);
         const modeLabel = inventory.ecommercePurchaseResetMode === "timeline"
           ? `per ${inventory.ecommercePurchaseResetDays} days`
           : "until admin reset";
         return next(new CustomError(400,
-          `"${inventory.productName}" limit: max ${inventory.ecommerceMaxPerUser} ${modeLabel}. You have ${remaining} left.`
+          `"${inventory.productName}" limit: max ${effectiveLimit} ${modeLabel} (tier: ${req.customer.tier}). You have ${remaining} left.`
         ));
       }
     }
@@ -773,6 +776,10 @@ export const updateEcommerceOrderProducts = asyncErrorHandler(async (req, res, n
       }
 
       if (action === "add") {
+        // Look up the customer's tier for effective limit calculation
+        const orderCustomer = await Customer.findById(order.customerId).session(session);
+        const customerTier = orderCustomer?.tier || "standard";
+
         for (const item of products) {
           const invId = item.inventoryId;
           const inventory = inventoryMap[invId];
@@ -794,18 +801,20 @@ export const updateEcommerceOrderProducts = asyncErrorHandler(async (req, res, n
           }
 
           if (inventory.ecommerceMaxPerUser) {
+            const tierMultiplier = getTierMultiplier(customerTier);
+            const effectiveLimit = inventory.ecommerceMaxPerUser * tierMultiplier;
             const alreadyOrdered = orderedMap[invId] || 0;
             const existingInThisOrder = order.products.find(p => p.inventoryId.toString() === invId);
             const currentInThisOrder = existingInThisOrder ? (existingInThisOrder.baseQuantity || existingInThisOrder.quantity) : 0;
             const totalBaseQty = alreadyOrdered + currentInThisOrder + baseQty;
 
-            if (totalBaseQty > inventory.ecommerceMaxPerUser) {
-              const remaining = Math.max(0, inventory.ecommerceMaxPerUser - (alreadyOrdered + currentInThisOrder));
+            if (totalBaseQty > effectiveLimit) {
+              const remaining = Math.max(0, effectiveLimit - (alreadyOrdered + currentInThisOrder));
               const modeLabel = inventory.ecommercePurchaseResetMode === "timeline"
                 ? `per ${inventory.ecommercePurchaseResetDays} days`
                 : "until admin reset";
               throw new CustomError(400,
-                `"${inventory.productName}" limit: max ${inventory.ecommerceMaxPerUser} ${modeLabel}. You have ${remaining} left.`
+                `"${inventory.productName}" limit: max ${effectiveLimit} ${modeLabel} (tier: ${customerTier}). You have ${remaining} left.`
               );
             }
           }
@@ -1022,7 +1031,7 @@ export const getPurchaseUsage = asyncErrorHandler(async (req, res, next) => {
     return next(new CustomError(400, "Invalid inventory ID format"));
   }
 
-  const customer = await Customer.findById(customerId).select("name phone");
+  const customer = await Customer.findById(customerId).select("name phone tier");
   if (!customer) {
     return next(new CustomError(404, "Customer not found"));
   }
@@ -1036,6 +1045,9 @@ export const getPurchaseUsage = asyncErrorHandler(async (req, res, next) => {
   if (!inventory.ecommerceMaxPerUser) {
     return next(new CustomError(400, "This product has no purchase limit"));
   }
+
+  const tierMultiplier = getTierMultiplier(customer.tier);
+  const effectiveLimit = inventory.ecommerceMaxPerUser * tierMultiplier;
 
   const latestReset = await PurchaseReset.findOne({ customerId: { $in: [customerId, null] }, inventoryId })
     .sort({ resetAt: -1 })
@@ -1068,17 +1080,19 @@ export const getPurchaseUsage = asyncErrorHandler(async (req, res, next) => {
   res.status(200).json({
     success: true,
     data: {
-      customer: { _id: customer._id, name: customer.name, phone: customer.phone },
+      customer: { _id: customer._id, name: customer.name, phone: customer.phone, tier: customer.tier },
       product: {
         _id: inventory._id,
         productName: inventory.productName,
         productCode: inventory.productCode,
         maxPerUser: inventory.ecommerceMaxPerUser,
+        effectiveLimit,
+        tierMultiplier,
         resetMode: inventory.ecommercePurchaseResetMode,
         resetDays: inventory.ecommercePurchaseResetDays,
       },
       alreadyOrdered,
-      remaining: Math.max(0, inventory.ecommerceMaxPerUser - alreadyOrdered),
+      remaining: Math.max(0, effectiveLimit - alreadyOrdered),
       lastResetAt: latestReset?.resetAt || null,
       lastResetBy: latestReset?.resetBy || null,
     },
