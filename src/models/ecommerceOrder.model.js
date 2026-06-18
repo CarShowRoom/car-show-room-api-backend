@@ -14,6 +14,16 @@ const productSchema = new mongoose.Schema({
     required: [true, "Quantity is required"],
     min: [1, "Quantity must be at least 1"],
   },
+  factor: {
+    type: Number,
+    default: 1,
+    min: [0.001, "Factor must be greater than 0"],
+  },
+  baseQuantity: {
+    type: Number,
+    default: null,
+    min: [0, "Base quantity cannot be negative"],
+  },
   unitPrice: {
     type: Number,
     required: [true, "Unit price is required"],

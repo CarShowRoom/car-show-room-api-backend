@@ -409,6 +409,21 @@ export const updateInventory = asyncErrorHandler(async (req, res, next) => {
     );
   }
 
+  // Handle ecommerceMaxPerUser with unit conversion
+  if (updateData.ecommerceMaxPerUser !== undefined && updateData.limitUnit) {
+    const unit = String(updateData.limitUnit).trim().toLowerCase();
+    const baseUnit = existingInventory.unitOfMeasure || 'piece';
+    if (unit !== baseUnit) {
+      const conv = (existingInventory.uomConversions || []).find(
+        c => c.unit?.toLowerCase() === unit
+      );
+      if (conv) {
+        updateData.ecommerceMaxPerUser = updateData.ecommerceMaxPerUser * conv.factor;
+      }
+    }
+    delete updateData.limitUnit;
+  }
+
   // Apply updates to the existing document and save
   // This ensures validators have access to the complete merged document
   Object.keys(updateData).forEach((key) => {

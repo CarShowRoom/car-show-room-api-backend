@@ -10,6 +10,11 @@ const grnLineItemSchema = new mongoose.Schema(
       required: [true, "Product is required"],
       // Auto-filled from PO product based on productCode (handled in controller)
     },
+    poProductId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: [true, "PO product entry is required"],
+      // Tracks which PO product entry this GRN line item belongs to
+    },
     receivedQuantity: {
       type: Number,
       required: [true, "Received quantity is required"],

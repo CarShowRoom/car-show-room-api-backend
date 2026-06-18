@@ -62,8 +62,7 @@ export const createGRN = asyncErrorHandler(async (req, res, next) => {
     );
   }
 
-  // Create a map of user-provided line items by productCode for easy lookup
-  const userLineItemsMap = new Map();
+  // Validate each line item (supports duplicate productCode)
   lineItems.forEach((item, index) => {
     if (!item || typeof item !== "object") {
       return next(
@@ -78,40 +77,98 @@ export const createGRN = asyncErrorHandler(async (req, res, next) => {
         )
       );
     }
-    const productCodeUpper = item.productCode.toUpperCase();
-    if (userLineItemsMap.has(productCodeUpper)) {
-      return next(
-        new CustomError(
-          400,
-          `Duplicate productCode '${item.productCode}' found in line items. Each product can only appear once per GRN.`
-        )
-      );
-    }
-    userLineItemsMap.set(productCodeUpper, item);
   });
 
   // Create a map of PO products by productCode for efficient lookup
+  // (supports multiple entries with same productCode but different units)
   const poProductsByCode = new Map();
   purchaseOrder.products.forEach((poProduct) => {
     const code = poProduct.productCode.toUpperCase();
-    poProductsByCode.set(code, poProduct);
+    if (!poProductsByCode.has(code)) {
+      poProductsByCode.set(code, []);
+    }
+    poProductsByCode.get(code).push(poProduct);
   });
 
   // Build GRN line items from user-provided line items (partial GRN support)
   const grnLineItems = [];
   let calculatedTotalAmount = 0;
+  // Track cumulative received quantity per inventoryId for duplicate products
+  const receivedByProduct = new Map();
 
-  // Process only the products that user wants to receive (partial GRN)
-  for (const [productCodeUpper, userItem] of userLineItemsMap) {
-    // Find the corresponding PO product
-    const poProduct = poProductsByCode.get(productCodeUpper);
-    if (!poProduct) {
+  // Process each line item (supports duplicate productCode, optionally by unit)
+  for (const [idx, userItem] of lineItems.entries()) {
+    const productCodeUpper = userItem.productCode.toUpperCase();
+    // Find corresponding PO products (may have multiple entries for same code)
+    const poProducts = poProductsByCode.get(productCodeUpper);
+    if (!poProducts || poProducts.length === 0) {
       return next(
         new CustomError(
           400,
           `Product with productCode '${userItem.productCode}' not found in purchase order.`
         )
       );
+    }
+
+    // Validate quantities before matching (needed for baseQuantity auto-select)
+    if (
+      userItem.goodQuantity === undefined ||
+      userItem.badQuantity === undefined
+    ) {
+      return next(
+        new CustomError(
+          400,
+          `goodQuantity and badQuantity are required for product '${userItem.productCode}'`
+        )
+      );
+    }
+
+    if (userItem.goodQuantity < 0 || userItem.badQuantity < 0) {
+      return next(new CustomError(400, "Quantities cannot be negative"));
+    }
+
+    const calcReceivedQuantity =
+      userItem.goodQuantity + userItem.badQuantity;
+
+    // Match the specific PO product entry
+    let poProduct;
+    if (poProducts.length === 1) {
+      poProduct = poProducts[0];
+    } else if (userItem.unit) {
+      // Unit provided — match by unit name
+      const unitStr = String(userItem.unit).trim().toLowerCase();
+      poProduct = poProducts.find(
+        p => String(p.unit || '').trim().toLowerCase() === unitStr
+      );
+      if (!poProduct) {
+        return next(
+          new CustomError(
+            400,
+            `Product with productCode '${userItem.productCode}' and unit '${userItem.unit}' not found in purchase order. Available units: ${poProducts.map(p => p.unit || 'N/A').join(', ')}`
+          )
+        );
+      }
+    } else {
+      // No unit provided — try exact baseQuantity match first
+      poProduct = poProducts.find(p => {
+        const entryBaseQty = p.baseQuantity || p.purchaseQuantity || 0;
+        const remaining = entryBaseQty - (p.receivedQuantity || 0);
+        return entryBaseQty === calcReceivedQuantity && remaining >= calcReceivedQuantity;
+      });
+      if (!poProduct) {
+        // Fallback: base unit entry (purchaseQuantity === baseQuantity)
+        poProduct = poProducts.find(
+          p => (p.baseQuantity != null ? p.baseQuantity : p.purchaseQuantity) === p.purchaseQuantity
+        );
+      }
+      if (!poProduct) {
+        return next(
+          new CustomError(
+            400,
+            `Multiple products with productCode '${userItem.productCode}' found in purchase order. Please provide 'unit' to specify which product you are receiving. Available units: ${poProducts.map(p => p.unit || 'N/A').join(', ')}`
+          )
+        );
+      }
     }
     // Get inventoryId from PO product, or look it up by productCode if missing
     let inventoryIdValue = poProduct.inventoryId;
@@ -150,33 +207,11 @@ export const createGRN = asyncErrorHandler(async (req, res, next) => {
     // Convert to ObjectId
     inventoryIdValue = new mongoose.Types.ObjectId(inventoryIdValue);
 
-    // Validate quantities (user only provides goodQuantity and badQuantity)
-    if (
-      userItem.goodQuantity === undefined ||
-      userItem.badQuantity === undefined
-    ) {
-      return next(
-        new CustomError(
-          400,
-          `goodQuantity and badQuantity are required for product '${poProduct.productCode}'`
-        )
-      );
-    }
-
-    if (userItem.goodQuantity < 0 || userItem.badQuantity < 0) {
-      return next(new CustomError(400, "Quantities cannot be negative"));
-    }
-
-    // Calculate receivedQuantity from goodQuantity + badQuantity
-    const calculatedReceivedQuantity =
-      userItem.goodQuantity + userItem.badQuantity;
-
     // Check if receivedQuantity is provided in the request (optional)
     const providedReceivedQuantity = userItem.receivedQuantity;
 
     // Validate that goodQuantity + badQuantity equals receivedQuantity
     if (providedReceivedQuantity !== undefined) {
-      // If receivedQuantity is provided, validate it matches the sum
       if (
         typeof providedReceivedQuantity !== "number" ||
         providedReceivedQuantity < 0
@@ -189,23 +224,19 @@ export const createGRN = asyncErrorHandler(async (req, res, next) => {
         );
       }
 
-      if (providedReceivedQuantity !== calculatedReceivedQuantity) {
+      if (providedReceivedQuantity !== calcReceivedQuantity) {
         return next(
           new CustomError(
             400,
-            `For product '${poProduct.productCode}' (${poProduct.productName}): Validation failed - goodQuantity (${userItem.goodQuantity}) + badQuantity (${userItem.badQuantity}) = ${calculatedReceivedQuantity}, but receivedQuantity is ${providedReceivedQuantity}. These values must be equal. Please ensure: goodQuantity + badQuantity = receivedQuantity.`
+            `For product '${poProduct.productCode}' (${poProduct.productName}): Validation failed - goodQuantity (${userItem.goodQuantity}) + badQuantity (${userItem.badQuantity}) = ${calcReceivedQuantity}, but receivedQuantity is ${providedReceivedQuantity}. These values must be equal. Please ensure: goodQuantity + badQuantity = receivedQuantity.`
           )
         );
       }
-      // Use the provided receivedQuantity (which matches the calculated value)
       var receivedQuantity = providedReceivedQuantity;
     } else {
-      // If receivedQuantity is not provided, auto-calculate it
-      var receivedQuantity = calculatedReceivedQuantity;
+      var receivedQuantity = calcReceivedQuantity;
     }
 
-    // Explicit validation: Ensure goodQuantity + badQuantity always equals receivedQuantity
-    // This is a final check to ensure data integrity
     const sumOfGoodAndBad = userItem.goodQuantity + userItem.badQuantity;
     if (receivedQuantity !== sumOfGoodAndBad) {
       return next(
@@ -216,20 +247,19 @@ export const createGRN = asyncErrorHandler(async (req, res, next) => {
       );
     }
 
-    // Validate that receivedQuantity doesn't exceed remaining purchaseQuantity
-    // baseQuantity = converted to base unit (falls back to purchaseQuantity)
-    // receivedQuantity = total received from all GRNs
-    // remainingQuantity = baseQuantity - receivedQuantity
+    // Validate that cumulative receivedQuantity doesn't exceed remaining purchaseQuantity
+    // Tracks across duplicate entries for the same PO product entry
     const poPurchaseBaseQty = poProduct.baseQuantity || poProduct.purchaseQuantity || 0;
     const poReceivedQuantity = poProduct.receivedQuantity || 0;
-    const remainingQuantity = poPurchaseBaseQty - poReceivedQuantity;
+    const poProductIdStr = String(poProduct._id);
+    const runningTotal = (receivedByProduct.get(poProductIdStr) || 0) + receivedQuantity;
+    receivedByProduct.set(poProductIdStr, runningTotal);
 
-    // Validate that new receivedQuantity doesn't exceed remaining quantity
-    if (receivedQuantity > remainingQuantity) {
+    if (runningTotal > (poPurchaseBaseQty - poReceivedQuantity)) {
       return next(
         new CustomError(
           400,
-          `Received quantity (${receivedQuantity}) for product '${poProduct.productCode}' (${poProduct.productName}) exceeds remaining purchase order quantity. Already received: ${poReceivedQuantity}, Remaining: ${remainingQuantity}, Total ordered: ${poProduct.purchaseQuantity}${poProduct.baseQuantity ? " (base: " + poProduct.baseQuantity + ")" : ""}.`
+          `Total received quantity (${runningTotal}) for product '${poProduct.productCode}' (${poProduct.productName}) exceeds remaining purchase order quantity. Already received: ${poReceivedQuantity}, Remaining: ${poPurchaseBaseQty - poReceivedQuantity}, Total ordered: ${poProduct.purchaseQuantity}${poProduct.baseQuantity ? " (base: " + poProduct.baseQuantity + ")" : ""}.`
         )
       );
     }
@@ -260,6 +290,7 @@ export const createGRN = asyncErrorHandler(async (req, res, next) => {
     // Build line item with all data auto-filled from PO
     const grnLineItem = {
       inventoryId: inventoryIdValue, // Auto-filled from PO or looked up by productCode
+      poProductId: poProduct._id, // Tracks which PO product entry this belongs to
       receivedQuantity: receivedQuantity, // Auto-calculated: goodQuantity + badQuantity
       goodQuantity: userItem.goodQuantity, // User provides
       badQuantity: userItem.badQuantity, // User provides
@@ -292,20 +323,28 @@ export const createGRN = asyncErrorHandler(async (req, res, next) => {
 
   const newGRN = await GoodsRecievedNote.create(grnData);
 
-  // Increment receivedQuantity in PO for each product
+  // Accumulate receivedQuantity by PO product entry (handles duplicate productCode)
   // purchaseQuantity remains unchanged (preserves original order quantity)
   // receivedQuantity tracks total received from all GRNs
-  // If purchaseQuantity === receivedQuantity, update productStatus to "seperated"
+  const receivedByPoProductId = new Map();
   for (const grnLineItem of grnLineItems) {
-    // First, increment receivedQuantity
+    const poProdId = String(grnLineItem.poProductId);
+    receivedByPoProductId.set(
+      poProdId,
+      (receivedByPoProductId.get(poProdId) || 0) + grnLineItem.receivedQuantity
+    );
+  }
+
+  // Update PO receivedQuantity once per unique PO product entry
+  for (const [poProdIdStr, totalReceived] of receivedByPoProductId) {
     await Purchasing.updateOne(
       {
         _id: purchasingId,
-        "products.inventoryId": grnLineItem.inventoryId,
+        "products._id": new mongoose.Types.ObjectId(poProdIdStr),
       },
       {
         $inc: {
-          "products.$.receivedQuantity": grnLineItem.receivedQuantity,
+          "products.$.receivedQuantity": totalReceived,
         },
       }
     );
@@ -326,7 +365,7 @@ export const createGRN = asyncErrorHandler(async (req, res, next) => {
       await Purchasing.updateOne(
         {
           _id: purchasingId,
-          "products.inventoryId": product.inventoryId,
+          "products._id": product._id,
         },
         {
           $set: {
@@ -340,7 +379,7 @@ export const createGRN = asyncErrorHandler(async (req, res, next) => {
       await Purchasing.updateOne(
         {
           _id: purchasingId,
-          "products.inventoryId": product.inventoryId,
+          "products._id": product._id,
         },
         {
           $set: {

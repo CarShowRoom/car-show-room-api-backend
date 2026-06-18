@@ -199,13 +199,27 @@ export const getProducts = asyncErrorHandler(async (req, res, next) => {
     return pipe;
   };
 
+  const enrichWithQuantityByUnit = (items) =>
+    items.map(item => {
+      const inv = item.product;
+      const uomConversions = inv?.uomConversions || [];
+      const baseUnit = inv?.unitOfMeasure || 'piece';
+      const baseQty = item.quantity || 0;
+      const quantityByUnit = { [baseUnit]: baseQty };
+      for (const conv of uomConversions) {
+        quantityByUnit[conv.unit] = baseQty / conv.factor;
+      }
+      return { ...item, quantityByUnit };
+    });
+
   if (hasPagination) {
-    const [products, countResult] = await Promise.all([
+    const [rawProducts, countResult] = await Promise.all([
       StorefrontInventory.aggregate(buildPipeline(false)),
       StorefrontInventory.aggregate(buildPipeline(true)),
     ]);
 
     const totalCount = countResult[0]?.total || 0;
+    const products = enrichWithQuantityByUnit(rawProducts);
 
     res.status(200).json({
       success: true,
@@ -218,7 +232,8 @@ export const getProducts = asyncErrorHandler(async (req, res, next) => {
       },
     });
   } else {
-    const products = await StorefrontInventory.aggregate(buildPipeline(false));
+    const rawProducts = await StorefrontInventory.aggregate(buildPipeline(false));
+    const products = enrichWithQuantityByUnit(rawProducts);
 
     res.status(200).json({
       success: true,
@@ -339,7 +354,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
       for (const p of order.products) {
         const pid = p.inventoryId.toString();
         if (limitedInvIds.includes(pid)) {
-          orderedMap[pid] = (orderedMap[pid] || 0) + p.quantity;
+          orderedMap[pid] = (orderedMap[pid] || 0) + (p.baseQuantity || p.quantity);
         }
       }
     }
@@ -373,14 +388,18 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
       return next(new CustomError(400, `Product at index ${i}: Quantity must be at least 1`));
     }
 
-    if (stockRecord.quantity < requestedQty) {
-      return next(new CustomError(400, `Product at index ${i}: Insufficient stock (available: ${stockRecord.quantity}, requested: ${requestedQty})`));
+    const itemUnit = item.unit || inventory.unitOfMeasure || null;
+    const factor = getUnitFactor(inventory, itemUnit);
+    const baseQty = requestedQty * factor;
+
+    if (stockRecord.quantity < baseQty) {
+      return next(new CustomError(400, `Product at index ${i}: Insufficient stock (available: ${stockRecord.quantity}, requested: ${baseQty} in base unit "${inventory.unitOfMeasure}")`));
     }
 
     if (inventory.ecommerceMaxPerUser) {
       const alreadyOrdered = orderedMap[invId] || 0;
-      const totalQty = alreadyOrdered + requestedQty;
-      if (totalQty > inventory.ecommerceMaxPerUser) {
+      const totalBaseQty = alreadyOrdered + baseQty;
+      if (totalBaseQty > inventory.ecommerceMaxPerUser) {
         const remaining = Math.max(0, inventory.ecommerceMaxPerUser - alreadyOrdered);
         const modeLabel = inventory.ecommercePurchaseResetMode === "timeline"
           ? `per ${inventory.ecommercePurchaseResetDays} days`
@@ -391,11 +410,10 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
       }
     }
 
-    let unitPrice = inventory.sellingPrice;
+    let unitPrice = inventory.sellingPrice * factor;
     if (item.unitPrice) {
       unitPrice = item.unitPrice;
     } else if (inventory.wholesalePrices?.length > 0) {
-      const itemUnit = item.unit || null;
       const matchingWholesale = inventory.wholesalePrices.filter(
         (wp) => wp.unit === itemUnit || (!wp.unit && !itemUnit),
       );
@@ -412,15 +430,17 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
       inventoryId: new mongoose.Types.ObjectId(invId),
       productName: inventory.productName,
       productCode: inventory.productCode,
-      unit: item.unit || inventory.unitOfMeasure || null,
+      unit: itemUnit,
       quantity: requestedQty,
+      factor,
+      baseQuantity: baseQty,
       unitPrice,
       subtotal,
     });
 
     stockUpdates.push({
       stockRecord,
-      deductQty: requestedQty,
+      deductQty: baseQty,
     });
   }
 
@@ -604,6 +624,14 @@ export const updateEcommerceOrderStatus = asyncErrorHandler(async (req, res, nex
   });
 });
 
+const getUnitFactor = (inventory, unit) => {
+  if (!unit || !inventory.uomConversions?.length) return 1;
+  const conv = inventory.uomConversions.find(
+    c => c.unit?.toLowerCase() === unit.toLowerCase()
+  );
+  return conv ? conv.factor : 1;
+};
+
 const applyWholesalePrice = (inventory, quantity, unit = null) => {
   if (!inventory.wholesalePrices?.length) return inventory.sellingPrice;
   const matchingWholesale = inventory.wholesalePrices.filter(
@@ -737,7 +765,7 @@ export const updateEcommerceOrderProducts = asyncErrorHandler(async (req, res, n
             for (const p of o.products) {
               const pid = p.inventoryId.toString();
               if (limitedInvIds.includes(pid)) {
-                orderedMap[pid] = (orderedMap[pid] || 0) + p.quantity;
+                orderedMap[pid] = (orderedMap[pid] || 0) + (p.baseQuantity || p.quantity);
               }
             }
           }
@@ -757,17 +785,21 @@ export const updateEcommerceOrderProducts = asyncErrorHandler(async (req, res, n
             throw new CustomError(404, `Product not available in ecommerce store: ${invId}`);
           }
 
-          if (stockRecord.quantity < item.quantity) {
-            throw new CustomError(400, `Insufficient stock for ${inventory.productName} (available: ${stockRecord.quantity}, requested: ${item.quantity})`);
+          const itemUnit = item.unit || inventory.unitOfMeasure || null;
+          const factor = getUnitFactor(inventory, itemUnit);
+          const baseQty = item.quantity * factor;
+
+          if (stockRecord.quantity < baseQty) {
+            throw new CustomError(400, `Insufficient stock for ${inventory.productName} (available: ${stockRecord.quantity}, requested: ${baseQty} in base unit "${inventory.unitOfMeasure}")`);
           }
 
           if (inventory.ecommerceMaxPerUser) {
             const alreadyOrdered = orderedMap[invId] || 0;
             const existingInThisOrder = order.products.find(p => p.inventoryId.toString() === invId);
-            const currentInThisOrder = existingInThisOrder ? existingInThisOrder.quantity : 0;
-            const totalQty = alreadyOrdered + currentInThisOrder + item.quantity;
+            const currentInThisOrder = existingInThisOrder ? (existingInThisOrder.baseQuantity || existingInThisOrder.quantity) : 0;
+            const totalBaseQty = alreadyOrdered + currentInThisOrder + baseQty;
 
-            if (totalQty > inventory.ecommerceMaxPerUser) {
+            if (totalBaseQty > inventory.ecommerceMaxPerUser) {
               const remaining = Math.max(0, inventory.ecommerceMaxPerUser - (alreadyOrdered + currentInThisOrder));
               const modeLabel = inventory.ecommercePurchaseResetMode === "timeline"
                 ? `per ${inventory.ecommercePurchaseResetDays} days`
@@ -790,11 +822,11 @@ export const updateEcommerceOrderProducts = asyncErrorHandler(async (req, res, n
             newQty = existing.quantity + item.quantity;
             unitPrice = item.unitPrice || applyWholesalePrice(inventory, newQty, existing.unit);
             existing.quantity = newQty;
+            existing.baseQuantity = (existing.baseQuantity || 0) + baseQty;
             existing.unitPrice = unitPrice;
             existing.subtotal = newQty * unitPrice;
           } else {
             newQty = item.quantity;
-            const itemUnit = item.unit || inventory.unitOfMeasure || null;
             unitPrice = item.unitPrice || applyWholesalePrice(inventory, newQty, itemUnit);
             order.products.push({
               inventoryId: new mongoose.Types.ObjectId(invId),
@@ -802,12 +834,14 @@ export const updateEcommerceOrderProducts = asyncErrorHandler(async (req, res, n
               productCode: inventory.productCode,
               unit: itemUnit,
               quantity: newQty,
+              factor,
+              baseQuantity: baseQty,
               unitPrice,
               subtotal: newQty * unitPrice,
             });
           }
 
-          stockRecord.quantity -= item.quantity;
+          stockRecord.quantity -= baseQty;
           stockRecord.lastUpdated = new Date();
           await stockRecord.save({ session });
         }
@@ -825,31 +859,35 @@ export const updateEcommerceOrderProducts = asyncErrorHandler(async (req, res, n
           }
 
           const existing = order.products[existingIndex];
+          const removeFactor = existing.factor || 1;
           if (item.quantity > existing.quantity) {
             throw new CustomError(400, `Cannot remove ${item.quantity} items. Only ${existing.quantity} exist in order for this product.`);
           }
 
+          const removeBaseQty = item.quantity * removeFactor;
           const newQty = existing.quantity - item.quantity;
+          const newBaseQty = (existing.baseQuantity || existing.quantity) - removeBaseQty;
           if (newQty <= 0) {
             order.products.splice(existingIndex, 1);
           } else {
             const inventory = inventoryMap[invId];
             const unitPrice = applyWholesalePrice(inventory, newQty, existing.unit);
             existing.quantity = newQty;
+            existing.baseQuantity = newBaseQty;
             existing.unitPrice = unitPrice;
             existing.subtotal = newQty * unitPrice;
           }
 
           const stockRecord = stockMap[invId];
           if (stockRecord) {
-            stockRecord.quantity += item.quantity;
+            stockRecord.quantity += removeBaseQty;
             stockRecord.lastUpdated = new Date();
             await stockRecord.save({ session });
           } else {
             await StorefrontInventory.create([{
               inventoryId: new mongoose.Types.ObjectId(invId),
               storefrontId,
-              quantity: item.quantity,
+              quantity: removeBaseQty,
               lastUpdated: new Date(),
             }], { session });
           }
@@ -1024,7 +1062,7 @@ export const getPurchaseUsage = asyncErrorHandler(async (req, res, next) => {
 
   const alreadyOrdered = existingOrders.reduce((sum, order) => {
     const p = order.products.find(pr => pr.inventoryId.toString() === inventoryId);
-    return sum + (p ? p.quantity : 0);
+    return sum + (p ? (p.baseQuantity || p.quantity) : 0);
   }, 0);
 
   res.status(200).json({
