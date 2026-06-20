@@ -51,6 +51,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     storefrontId,
     customerName,
     customerPhone,
+    customerAddress,
     note,
     ordersProducts,
     subTotal,
@@ -428,6 +429,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
             orderStatus: "completed",
             customerName: customerName || (creditPerson ? creditPerson.name : null),
             customerPhone: customerPhone || (creditPerson ? creditPerson.phone : null),
+            customerAddress: customerAddress || (creditPerson ? creditPerson.address : null),
             note: note || null,
             soldBy,
           };

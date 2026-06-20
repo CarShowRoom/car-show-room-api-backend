@@ -39,7 +39,7 @@ export const createDateFilter = (
 
     startMoment = null;
     for (const format of dateFormats) {
-      startMoment = moment.utc(startDate, format);
+      startMoment = moment.tz(startDate, format, "Asia/Yangon");
       if (startMoment.isValid()) {
         break;
       }
@@ -47,7 +47,7 @@ export const createDateFilter = (
 
     // If still not valid, try parsing without format (moment's default parsing in UTC)
     if (!startMoment || !startMoment.isValid()) {
-      startMoment = moment.utc(startDate);
+      startMoment = moment.tz(startDate, "Asia/Yangon");
     }
 
     if (!startMoment.isValid()) {
@@ -76,7 +76,7 @@ export const createDateFilter = (
 
     endMoment = null;
     for (const format of dateFormats) {
-      endMoment = moment.utc(endDate, format);
+      endMoment = moment.tz(endDate, format, "Asia/Yangon");
       if (endMoment.isValid()) {
         break;
       }
@@ -84,7 +84,7 @@ export const createDateFilter = (
 
     // If still not valid, try parsing without format (moment's default parsing in UTC)
     if (!endMoment || !endMoment.isValid()) {
-      endMoment = moment.utc(endDate);
+      endMoment = moment.tz(endDate, "Asia/Yangon");
     }
 
     if (!endMoment.isValid()) {

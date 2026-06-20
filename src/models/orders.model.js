@@ -60,6 +60,11 @@ const orderSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    customerAddress: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     storefrontId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "LocationProfile",

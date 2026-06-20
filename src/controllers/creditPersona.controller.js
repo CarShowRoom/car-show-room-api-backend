@@ -5,20 +5,13 @@ import CustomError from "../utils/customError.js";
 import mongoose from "mongoose";
 
 export const createCreditPerson = asyncErrorHandler(async (req, res, next) => {
-  const { name, phone, creditLimit } = req.body;
+  const { name, phone, address, creditLimit } = req.body;
 
   if (!name || !phone) {
     return next(new CustomError(400, "Name and phone are required"));
   }
 
-  const existing = await CreditPerson.findOne({ name, phone });
-  if (existing) {
-    return next(new CustomError(400,
-      `Credit person "${name}" with phone "${phone}" already exists.`
-    ));
-  }
-
-  const creditPerson = await CreditPerson.create({ name, phone, creditLimit });
+  const creditPerson = await CreditPerson.create({ name, phone, address, creditLimit });
   res.status(201).json({
     success: true,
     message: "Credit person created successfully",
@@ -70,16 +63,15 @@ export const getCreditPersonById = asyncErrorHandler(async (req, res, next) => {
 
 export const updateCreditPerson = asyncErrorHandler(async (req, res, next) => {
   const { id } = req.params;
-  const { name, phone, creditLimit } = req.body;
+  const { name, phone, address, creditLimit } = req.body;
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return next(new CustomError(400, "Invalid credit person ID format"));
   }
-
   const updateFields = {};
   if (name !== undefined) updateFields.name = name;
   if (phone !== undefined) updateFields.phone = phone;
+  if (address !== undefined) updateFields.address = address;
   if (creditLimit !== undefined) updateFields.creditLimit = creditLimit;
-
   const creditPerson = await CreditPerson.findByIdAndUpdate(
     id,
     updateFields,
@@ -185,6 +177,7 @@ export const getCreditPersonOrderSummary = asyncErrorHandler(async (req, res, ne
         _id: creditPerson._id,
         name: creditPerson.name,
         phone: creditPerson.phone,
+        address: creditPerson.address,
         creditLimit: creditPerson.creditLimit,
         remainingLimit,
       },
