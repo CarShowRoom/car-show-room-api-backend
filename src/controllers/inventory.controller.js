@@ -550,6 +550,98 @@ export const importInventoryFromExcel = asyncErrorHandler(
           row["Unit of Measure"] ||
           "piece";
 
+        // UOM Conversions (flat columns: uom_N_unit, uom_N_factor, uom_N_default, uom_N_buyingPrice)
+        const parsedUomConversions = [];
+        for (let n = 1; n <= 10; n++) {
+          const unitRaw =
+            row[`uom_${n}_unit`] ||
+            row[`UOM_${n}_Unit`] ||
+            row[`UOM ${n} Unit`];
+          const factorRaw =
+            row[`uom_${n}_factor`] ||
+            row[`UOM_${n}_Factor`] ||
+            row[`UOM ${n} Factor`];
+          if (unitRaw && factorRaw) {
+            const factor = Number(factorRaw);
+            if (isNaN(factor) || factor <= 0) {
+              throw new Error(
+                `UOM conversion ${n}: factor must be a positive number, got "${factorRaw}"`,
+              );
+            }
+            const defaultRaw =
+              row[`uom_${n}_default`] ||
+              row[`UOM_${n}_Default`] ||
+              row[`UOM ${n} Default`];
+            const buyingPriceRaw =
+              row[`uom_${n}_buyingPrice`] ||
+              row[`uom_${n}_buying_price`] ||
+              row[`UOM_${n}_BuyingPrice`] ||
+              row[`UOM_${n}_Buying_Price`] ||
+              row[`UOM ${n} Buying Price`];
+            const uomEntry = {
+              unit: String(unitRaw).trim(),
+              factor: factor,
+              isDefaultSellingUnit: defaultRaw
+                ? String(defaultRaw).toLowerCase() === "true"
+                : false,
+            };
+            if (buyingPriceRaw !== undefined && buyingPriceRaw !== null && buyingPriceRaw !== "") {
+              const buyingPrice = Number(buyingPriceRaw);
+              if (isNaN(buyingPrice) || buyingPrice < 0) {
+                throw new Error(
+                  `UOM conversion ${n}: buyingPrice must be a non-negative number, got "${buyingPriceRaw}"`,
+                );
+              }
+              uomEntry.buyingPrice = buyingPrice;
+            }
+            parsedUomConversions.push(uomEntry);
+          } else if (unitRaw && !factorRaw) {
+            throw new Error(
+              `UOM conversion ${n}: missing factor for unit "${unitRaw}"`,
+            );
+          } else if (!unitRaw && factorRaw) {
+            throw new Error(
+              `UOM conversion ${n}: missing unit for factor "${factorRaw}"`,
+            );
+          }
+        }
+
+        // Wholesale Prices (flat columns: wholesale_N_quantity, wholesale_N_price)
+        const parsedWholesalePrices = [];
+        for (let n = 1; n <= 3; n++) {
+          const qtyRaw =
+            row[`wholesale_${n}_quantity`] ||
+            row[`WHOLESALE_${n}_Quantity`] ||
+            row[`WHOLESALE ${n} Quantity`];
+          const priceRaw =
+            row[`wholesale_${n}_price`] ||
+            row[`WHOLESALE_${n}_Price`] ||
+            row[`WHOLESALE ${n} Price`];
+          if (qtyRaw && priceRaw) {
+            const quantity = Number(qtyRaw);
+            if (isNaN(quantity) || quantity <= 0) {
+              throw new Error(
+                `Wholesale tier ${n}: quantity must be a positive number, got "${qtyRaw}"`,
+              );
+            }
+            const price = Number(priceRaw);
+            if (isNaN(price) || price < 0) {
+              throw new Error(
+                `Wholesale tier ${n}: price must be a non-negative number, got "${priceRaw}"`,
+              );
+            }
+            parsedWholesalePrices.push({ quantity, price });
+          } else if (qtyRaw && !priceRaw) {
+            throw new Error(
+              `Wholesale tier ${n}: missing price for quantity "${qtyRaw}"`,
+            );
+          } else if (!qtyRaw && priceRaw) {
+            throw new Error(
+              `Wholesale tier ${n}: missing quantity for price "${priceRaw}"`,
+            );
+          }
+        }
+
         const status = row.status || row["Status"] || "active";
         if (!validStatuses.includes(String(status).toLowerCase())) {
           throw new Error(`Invalid status: '${status}'`);
@@ -599,6 +691,10 @@ export const importInventoryFromExcel = asyncErrorHandler(
                 .filter(Boolean)
             : [],
           note: row.note || row["Note"] || "",
+          uomConversions:
+            parsedUomConversions.length > 0 ? parsedUomConversions : undefined,
+          wholesalePrices:
+            parsedWholesalePrices.length > 0 ? parsedWholesalePrices : undefined,
         };
 
         const newItem = await Inventory.create(inventoryData);

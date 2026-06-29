@@ -97,6 +97,11 @@ const inventorySchema = new mongoose.Schema(
           type: Boolean,
           default: false,
         },
+        buyingPrice: {
+          type: Number,
+          min: [0, "Buying price cannot be negative"],
+          default: null,
+        },
       }],
       _id: false,
     },

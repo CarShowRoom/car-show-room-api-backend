@@ -33,11 +33,22 @@ export const createPurchase = asyncErrorHandler(async (req, res, next) => {
         );
       }
 
+      // Check if product is purchased in a UOM conversion unit
+      let buyingPrice = inventoryItem.buyingPrice;
+      if (item.unit && inventoryItem.uomConversions?.length > 0) {
+        const conversion = inventoryItem.uomConversions.find(
+          (c) => c.unit?.toLowerCase() === String(item.unit).toLowerCase()
+        );
+        if (conversion?.buyingPrice != null) {
+          buyingPrice = conversion.buyingPrice;
+        }
+      }
+
       return {
         inventoryId: inventoryItem._id,
         productName: inventoryItem.productName,
         productCode: inventoryItem.productCode,
-        buyingPrice: inventoryItem.buyingPrice,
+        buyingPrice: buyingPrice,
         purchaseQuantity: item.purchaseQuantity,
       };
     })

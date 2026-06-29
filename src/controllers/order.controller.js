@@ -318,7 +318,17 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
               }
             }
 
-            const unitPrice = (isDirectSale && product.unitPrice != null) ? product.unitPrice : inventoryItem.sellingPrice / factor;
+            // Wholesale + UOM: check wholesale tiers based on baseQuantity
+            let unitPrice;
+            if (isDirectSale && product.unitPrice != null) {
+              unitPrice = product.unitPrice;
+            } else if (inventoryItem.wholesalePrices?.length > 0 && baseQuantity > 0) {
+              const sorted = [...inventoryItem.wholesalePrices].sort((a, b) => b.quantity - a.quantity);
+              const tier = sorted.find((wp) => baseQuantity >= wp.quantity);
+              unitPrice = tier ? tier.price / factor : inventoryItem.sellingPrice / factor;
+            } else {
+              unitPrice = inventoryItem.sellingPrice / factor;
+            }
             const productSubTotal = product.quantity * unitPrice;
             calculatedSubTotal += productSubTotal;
 
@@ -1299,7 +1309,15 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
           }
         }
 
-        const unitPrice = inventoryItem.sellingPrice / factor;
+        // Wholesale + UOM: compute unitPrice based on baseQuantity
+        let unitPrice;
+        if (inventoryItem.wholesalePrices?.length > 0 && baseQuantity > 0) {
+          const sorted = [...inventoryItem.wholesalePrices].sort((a, b) => b.quantity - a.quantity);
+          const tier = sorted.find((wp) => baseQuantity >= wp.quantity);
+          unitPrice = tier ? tier.price / factor : inventoryItem.sellingPrice / factor;
+        } else {
+          unitPrice = inventoryItem.sellingPrice / factor;
+        }
 
         // Check if item already exists in order
         const existingItemIndex = order.ordersProducts.findIndex(
@@ -1311,6 +1329,13 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
           // Item exists, increase quantity and baseQuantity
           order.ordersProducts[existingItemIndex].quantity += item.quantity;
           order.ordersProducts[existingItemIndex].baseQuantity += baseQuantity;
+          // Recalculate unitPrice based on new total baseQuantity
+          const totalBaseQuantity = order.ordersProducts[existingItemIndex].baseQuantity;
+          if (inventoryItem.wholesalePrices?.length > 0 && totalBaseQuantity > 0) {
+            const sorted = [...inventoryItem.wholesalePrices].sort((a, b) => b.quantity - a.quantity);
+            const tier = sorted.find((wp) => totalBaseQuantity >= wp.quantity);
+            order.ordersProducts[existingItemIndex].unitPrice = tier ? tier.price / factor : inventoryItem.sellingPrice / factor;
+          }
         } else {
           // Item doesn't exist, add new item
           order.ordersProducts.push({
