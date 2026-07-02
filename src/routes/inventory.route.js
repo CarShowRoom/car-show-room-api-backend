@@ -48,7 +48,7 @@ router.post(
 router.get(
   "/inventory/categories",
   protect,
-  permissionGranted("owner", "admin"),
+  permissionGranted("owner", "admin", "cashier"),
   getAllCategories,
 );
 
