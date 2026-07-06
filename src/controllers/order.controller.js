@@ -55,19 +55,10 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
     );
   }
 
-  // Validate creditPersonId - only allowed when paymentType is "credit"
+  // Validate creditPersonId
   if (creditPersonId) {
     if (!mongoose.Types.ObjectId.isValid(creditPersonId)) {
       return next(new CustomError(400, "Invalid credit person ID format"));
-    }
-
-    if (paymentType !== "credit") {
-      return next(
-        new CustomError(
-          400,
-          "Credit person ID can only be provided when payment type is 'credit'",
-        ),
-      );
     }
   }
 
@@ -582,15 +573,7 @@ export const updateOrderCreditPersonId = asyncErrorHandler(
           throw new CustomError(400, "Cannot update deleted order");
         }
 
-        // 2. Validate order is a credit order
-        if (order.paymentType !== "credit") {
-          throw new CustomError(
-            400,
-            "Can only add credit person to credit orders. This order is not a credit order.",
-          );
-        }
-
-        // 3. Validate credit person exists
+        // 2. Validate credit person exists
         const creditPerson =
           await CreditPerson.findById(creditPersonId).session(session);
 
