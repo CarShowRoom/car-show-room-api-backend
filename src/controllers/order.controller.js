@@ -110,11 +110,14 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
 
   // Validate orderDate if provided
   if (orderDate) {
+    const now = new Date();
     const parsedDate = new Date(orderDate);
     if (isNaN(parsedDate.getTime())) {
       return next(new CustomError(400, "Invalid order date format"));
     }
-    if (parsedDate > new Date()) {
+    const parsedDateOnly = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
+    const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (parsedDateOnly > todayOnly) {
       return next(new CustomError(400, "Order date cannot be in the future"));
     }
   }
@@ -504,7 +507,7 @@ export const getAllOrders = asyncErrorHandler(async (req, res, next) => {
   const orders = await Order.find(filter)
     .populate("storefrontId", "locationName locationCode")
     .populate("ordersProducts.inventoryId", "productName productCode SKU")
-    .populate("creditPersonId", "name phone")
+    .populate("creditPersonId", "name phone address")
     .populate("soldBy", "name role");
 
   res.status(200).json({
@@ -522,7 +525,7 @@ export const getOrders = asyncErrorHandler(async (req, res, next) => {
   const order = await Order.findOne({ _id: orderId, isDeleted: false })
     .populate("storefrontId", "locationName locationCode")
     .populate("ordersProducts.inventoryId", "productName productCode SKU")
-    .populate("creditPersonId", "name phone")
+    .populate("creditPersonId", "name phone address")
     .populate("soldBy", "name role");
 
   if (!order) {
@@ -597,7 +600,7 @@ export const updateOrderCreditPersonId = asyncErrorHandler(
 
         // 6. Populate references for response
         await order.populate("storefrontId", "storefrontName storefrontCode");
-        await order.populate("creditPersonId", "name phone");
+        await order.populate("creditPersonId", "name phone address");
         await order.populate(
           "ordersProducts.inventoryId",
           "productName productCode SKU",
@@ -694,7 +697,7 @@ export const updateOrderPaidAmount = asyncErrorHandler(
           "ordersProducts.inventoryId",
           "productName productCode SKU",
         );
-        await order.populate("creditPersonId", "name phone");
+        await order.populate("creditPersonId", "name phone address");
         await order.populate("soldBy", "name role");
 
         // 4. Send response
@@ -750,7 +753,7 @@ export const getOrdersByStorefrontId = asyncErrorHandler(
       .sort({ createdAt: -1 }) // Sort by newest first
       .populate("storefrontId", "locationName locationCode")
       .populate("ordersProducts.inventoryId", "productName productCode SKU")
-      .populate("creditPersonId", "name phone")
+      .populate("creditPersonId", "name phone address")
       .populate("soldBy", "name role");
 
     res.status(200).json({
@@ -1017,7 +1020,7 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
         "ordersProducts.inventoryId",
         "productName productCode SKU",
       );
-      await order.populate("creditPersonId", "name phone");
+      await order.populate("creditPersonId", "name phone address");
       await order.populate("soldBy", "name role");
 
       // 9. Send response
@@ -1274,7 +1277,7 @@ export const removeOrderItems = asyncErrorHandler(async (req, res, next) => {
         "ordersProducts.inventoryId",
         "productName productCode SKU",
       );
-      await order.populate("creditPersonId", "name phone");
+      await order.populate("creditPersonId", "name phone address");
       await order.populate("soldBy", "name role");
 
       // 11. Send response

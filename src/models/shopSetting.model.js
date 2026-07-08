@@ -18,13 +18,6 @@ const shopSettingSchema = new mongoose.Schema(
       type: String,
       required: [true, "Phone number is required"],
       trim: true,
-      validate: {
-        validator: function (value) {
-          // Basic phone number validation - can be enhanced based on requirements
-          return /^[0-9+\-\s()]+$/.test(value);
-        },
-        message: "Invalid phone number format",
-      },
     },
     logo: {
       type: String,
