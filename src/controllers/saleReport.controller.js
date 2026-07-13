@@ -779,7 +779,16 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
               ],
             },
           },
+          buyingPrice: { $first: "$invLookup.buyingPrice" },
           sellingPrice: { $first: "$invLookup.sellingPrice" },
+          totalBuyingPrice: {
+            $sum: {
+              $multiply: [
+                "$ordersProducts.quantity",
+                { $ifNull: ["$ordersProducts.buyingPrice", "$invLookup.buyingPrice"] }
+              ]
+            }
+          },
           productName: { $first: "$invLookup.productName" },
           productCode: { $first: "$invLookup.productCode" },
           SKU: { $first: "$invLookup.SKU" },
@@ -830,6 +839,7 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
               "0%",
             ],
           },
+          totalProfit: { $subtract: ["$totalRevenue", "$totalBuyingPrice"] },
         },
       },
       // Sort by total quantity descending
@@ -859,6 +869,9 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
           totalIfRetail: 1,
           wholesaleDiscount: 1,
           wholesalePercentage: 1,
+          buyingPrice: 1,
+          totalBuyingPrice: 1,
+          totalProfit: 1,
         },
       },
     ]);
@@ -868,6 +881,8 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
       (acc, item) => {
         acc.totalQuantity += item.totalQuantity;
         acc.totalRevenue += item.totalRevenue;
+        acc.totalBuyingPrice += item.totalBuyingPrice;
+        acc.totalProfit += item.totalProfit;
         acc.totalIfRetail += item.totalIfRetail;
         acc.totalWholesaleDiscount += item.wholesaleDiscount;
         acc.totalRetailQuantity += item.retailQuantity;
@@ -878,6 +893,8 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
       {
         totalQuantity: 0,
         totalRevenue: 0,
+        totalBuyingPrice: 0,
+        totalProfit: 0,
         totalIfRetail: 0,
         totalWholesaleDiscount: 0,
         totalRetailQuantity: 0,
@@ -908,6 +925,8 @@ export const getProductSalesReportByStorefrontId = asyncErrorHandler(
         totals: {
           totalQuantity: totals.totalQuantity,
           totalRevenue: totals.totalRevenue,
+          totalBuyingPrice: totals.totalBuyingPrice,
+          totalProfit: totals.totalProfit,
           totalIfRetail: totals.totalIfRetail,
           totalWholesaleDiscount: totals.totalWholesaleDiscount,
           totalRetailQuantity: totals.totalRetailQuantity,

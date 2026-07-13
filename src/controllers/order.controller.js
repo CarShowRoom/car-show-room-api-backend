@@ -253,6 +253,7 @@ export const createOrder = asyncErrorHandler(async (req, res, next) => {
               inventoryId,
               quantity: product.quantity,
               unitPrice, // Snapshot of current selling price
+              buyingPrice: inventoryItem.buyingPrice || 0, // Snapshot of current buying price
             });
           }
 
@@ -977,6 +978,7 @@ export const addOrderItems = asyncErrorHandler(async (req, res, next) => {
             inventoryId: inventoryId,
             quantity: item.quantity,
             unitPrice,
+            buyingPrice: inventoryItem.buyingPrice || 0, // Snapshot of current buying price
           });
         }
 
